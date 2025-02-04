@@ -6,6 +6,7 @@ import random
 import math
 import copy
 from collections import defaultdict
+import json
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -408,9 +409,54 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
 # 8. Main App                        #
 #####################################
 
+def get_current_settings():
+    """Collects all current settings into a dictionary."""
+    return {
+        "table_definitions": DEFAULT_TABLE_DEF,
+        "male_names": "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas",
+        "female_names": "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret",
+        "fixed_assignments": "John: A1\nMary: B2",
+        "optimization_params": {
+            "iterations": 20000,
+            "initial_temp": 10.0,
+            "cooling_rate": 0.9995,
+        },
+        "weights": {
+            "neighbor_weight": 1.0,
+            "corner_weight": 3.0,
+            "gender_weight": 5.0,
+            "fixed_weight": 2.0,
+            "empty_weight": 5.0
+        }
+    }
+
 def main():
     st.title("SeatPlan")
     st.markdown("### Optimizing seating arrangements for events.")
+    
+    # Add download/upload buttons in the sidebar at the top
+    st.sidebar.markdown("# Settings Import/Export")
+    
+    # Download button
+    if st.sidebar.button("Download Current Settings"):
+        settings = get_current_settings()
+        settings_json = json.dumps(settings, indent=2)
+        st.sidebar.download_button(
+            label="Download Settings JSON",
+            data=settings_json,
+            file_name="seatplan_settings.json",
+            mime="application/json"
+        )
+    
+    # Upload button
+    uploaded_file = st.sidebar.file_uploader("Upload Settings", type=['json'])
+    if uploaded_file is not None:
+        try:
+            settings = json.load(uploaded_file)
+            st.session_state.uploaded_settings = settings
+            st.sidebar.success("Settings loaded successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Error loading settings: {str(e)}")
     
     st.sidebar.markdown("# Conditions") 
     # View selection: either run seating optimization or view table layouts.
@@ -419,7 +465,13 @@ def main():
     
     # Sidebar: Table definitions.
     st.sidebar.header("Table Layout")
-    table_def_text = st.sidebar.text_area("Define tables (one per line, e.g., 'A: 8')", 
+    if "uploaded_settings" in st.session_state:
+        settings = st.session_state.uploaded_settings
+        table_def_text = st.sidebar.text_area("Define tables (one per line, e.g., 'A: 8')", 
+                                          value=settings["table_definitions"], height=100,
+                                          help="Each line should be in the format 'Letter: Number', where Number is the number of seats per side.")
+    else:
+        table_def_text = st.sidebar.text_area("Define tables (one per line, e.g., 'A: 8')", 
                                           value=DEFAULT_TABLE_DEF, height=100,
                                           help="Each line should be in the format 'Letter: Number', where Number is the number of seats per side.")
     global TABLES, TABLE_LETTERS
@@ -442,12 +494,21 @@ def main():
         )
         
         st.sidebar.header("Name Lists")
-        default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
-        default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
-        male_text = st.sidebar.text_area("Male Names (one per line)", value=default_male, height=150,
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            male_text = st.sidebar.text_area("Male Names (one per line)", 
+                                         value=settings["male_names"], height=150,
                                          help="Enter one male name per line.")
-        female_text = st.sidebar.text_area("Female Names (one per line)", value=default_female, height=150,
+            female_text = st.sidebar.text_area("Female Names (one per line)", 
+                                           value=settings["female_names"], height=150,
                                            help="Enter one female name per line.")
+        else:
+            default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
+            default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
+            male_text = st.sidebar.text_area("Male Names (one per line)", value=default_male, height=150,
+                                             help="Enter one male name per line.")
+            female_text = st.sidebar.text_area("Female Names (one per line)", value=default_female, height=150,
+                                               help="Enter one female name per line.")
         male_names = [name.strip() for name in male_text.splitlines() if name.strip()]
         female_names = [name.strip() for name in female_text.splitlines() if name.strip()]
         people = male_names + female_names
@@ -458,30 +519,73 @@ def main():
             person_genders[name] = "F"
         
         st.sidebar.header("Fixed Seat Assignments")
-        fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A12')", 
-                                          value="John: A1\nMary: B2", height=100,
-                                          help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A12')", 
+                                              value=settings["fixed_assignments"], height=100,
+                                              help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
+        else:
+            fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A12')", 
+                                              value="John: A1\nMary: B2", height=100,
+                                              help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
         fixed_positions = parse_fixed_seats(fixed_text)
         
         st.sidebar.header("Optimization Parameters")
-        iterations = st.sidebar.number_input("Iterations", value=20000, step=1000, min_value=1000,
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            iterations = st.sidebar.number_input("Iterations", 
+                                            value=settings["optimization_params"]["iterations"], 
+                                            step=1000, min_value=1000,
+                                            help="Number of iterations for simulated annealing. More iterations may yield better results but take longer.")
+            initial_temp = st.sidebar.number_input("Initial Temperature", 
+                                              value=settings["optimization_params"]["initial_temp"], 
+                                              step=1.0,
+                                              help="The starting temperature for simulated annealing. Higher values allow more exploration.")
+            cooling_rate = st.sidebar.slider("Cooling Rate", min_value=0.990, max_value=0.9999, 
+                                        value=settings["optimization_params"]["cooling_rate"],
+                                        help="The multiplier applied to the temperature after each iteration. Values closer to 1.0 cool more slowly.")
+        else:
+            iterations = st.sidebar.number_input("Iterations", value=20000, step=1000, min_value=1000,
                                                help="Number of iterations for simulated annealing. More iterations may yield better results but take longer.")
-        initial_temp = st.sidebar.number_input("Initial Temperature", value=10.0, step=1.0,
+            initial_temp = st.sidebar.number_input("Initial Temperature", value=10.0, step=1.0,
                                                help="The starting temperature for simulated annealing. Higher values allow more exploration.")
-        cooling_rate = st.sidebar.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=0.9995,
+            cooling_rate = st.sidebar.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=0.9995,
                                          help="The multiplier applied to the temperature after each iteration. Values closer to 1.0 cool more slowly.")
         
         st.sidebar.header("Condition Weights")
-        neighbor_weight = st.sidebar.number_input("Neighbor Weight", value=1.0, step=0.1, format="%.1f",
-                                                  help="Weight for penalizing repeated neighbors. Higher values force more neighbor diversity.")
-        corner_weight = st.sidebar.number_input("Corner Weight", value=3.0, step=0.1, format="%.1f",
-                                                help="Weight for penalizing repeated corner seatings.")
-        gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
-                                                help="Weight for penalizing adjacent seats with the same gender in a row.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=2.0, step=0.1, format="%.1f",
-                                               help="Extra weight applied to fixed-seat persons to encourage diverse neighbors.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=5.0, step=0.1, format="%.1f",
-                                               help="Weight for penalizing boundaries between empty and non-empty seats. Higher values encourage empty seats to cluster together.")
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            neighbor_weight = st.sidebar.number_input("Neighbor Weight", 
+                                                 value=settings["weights"]["neighbor_weight"], 
+                                                 step=0.1, format="%.1f",
+                                                 help="Weight for penalizing repeated neighbors. Higher values force more neighbor diversity.")
+            corner_weight = st.sidebar.number_input("Corner Weight", 
+                                               value=settings["weights"]["corner_weight"], 
+                                               step=0.1, format="%.1f",
+                                               help="Weight for penalizing repeated corner seatings.")
+            gender_weight = st.sidebar.number_input("Gender Weight", 
+                                               value=settings["weights"]["gender_weight"], 
+                                               step=0.1, format="%.1f",
+                                               help="Weight for penalizing adjacent seats with the same gender in a row.")
+            fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", 
+                                              value=settings["weights"]["fixed_weight"], 
+                                              step=0.1, format="%.1f",
+                                              help="Extra weight applied to fixed-seat persons to encourage diverse neighbors.")
+            empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", 
+                                              value=settings["weights"]["empty_weight"], 
+                                              step=0.1, format="%.1f",
+                                              help="Weight for penalizing boundaries between empty and non-empty seats. Higher values encourage empty seats to cluster together.")
+        else:
+            neighbor_weight = st.sidebar.number_input("Neighbor Weight", value=1.0, step=0.1, format="%.1f",
+                                                      help="Weight for penalizing repeated neighbors. Higher values force more neighbor diversity.")
+            corner_weight = st.sidebar.number_input("Corner Weight", value=3.0, step=0.1, format="%.1f",
+                                                    help="Weight for penalizing repeated corner seatings.")
+            gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
+                                                    help="Weight for penalizing adjacent seats with the same gender in a row.")
+            fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=2.0, step=0.1, format="%.1f",
+                                                   help="Extra weight applied to fixed-seat persons to encourage diverse neighbors.")
+            empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=5.0, step=0.1, format="%.1f",
+                                                   help="Weight for penalizing boundaries between empty and non-empty seats. Higher values encourage empty seats to cluster together.")
         
         run_button = st.sidebar.button("Run Optimization")
         
