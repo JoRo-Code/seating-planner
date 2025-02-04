@@ -20,7 +20,7 @@ from collections import defaultdict
 #####################################
 
 # Default table definitions (if the user does not change them)
-DEFAULT_TABLE_DEF = "A: 8\nB: 10\nC: 12"
+DEFAULT_TABLE_DEF = "A: 3\nB: 3\nC: 4"
 
 def parse_table_definitions(text):
     """
@@ -277,7 +277,7 @@ def seating_dataframe_for_table(assignments, table_id, table_letter):
 def parse_fixed_seats(text):
     """
     Parses fixed seat assignments from text.
-    Each line should be in the format: Name: TableLetter,Row,Col (e.g., John: A,0,3)
+    Each line should be in the format: Name: SeatID (e.g., John: A12)
     Returns a dictionary mapping Name -> (table, row, col)
     """
     fixed = {}
@@ -288,12 +288,13 @@ def parse_fixed_seats(text):
         try:
             name_part, seat_part = line.split(":", 1)
             name = name_part.strip()
-            parts = seat_part.strip().split(",")
-            if len(parts) != 3:
-                continue
-            table_letter = parts[0].strip().upper()
-            row = int(parts[1].strip())
-            col = int(parts[2].strip())
+            seat_id = seat_part.strip().upper()
+            
+            # Extract table letter and seat number
+            table_letter = seat_id[0]
+            seat_num = int(seat_id[1:]) - 1  # Convert to 0-based index
+            
+            # Find table_id from table letter
             table_id = None
             for tid, letter in TABLE_LETTERS.items():
                 if letter == table_letter:
@@ -301,6 +302,12 @@ def parse_fixed_seats(text):
                     break
             if table_id is None:
                 continue
+                
+            # Calculate row and column
+            seats_per_side = TABLES[table_id]
+            row = 1 if seat_num >= seats_per_side else 0
+            col = seat_num % seats_per_side
+            
             fixed[name] = (table_id, row, col)
         except Exception:
             continue
@@ -356,7 +363,7 @@ def display_table_layouts(tables, table_letters):
     st.markdown(
         """
         The following displays the seat numbering (blueprints) for each table.
-        For example, Table A’s seats are labeled A1, A2, … etc.
+        For example, Table A's seats are labeled A1, A2, … etc.
         Corner seats (first and last in each row) are highlighted in light red.
         """
     )
@@ -402,14 +409,16 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
 #####################################
 
 def main():
-    st.title("Seating Arrangement Optimizer & Visualizer")
+    st.title("SeatPlan")
+    st.markdown("### Optimizing seating arrangements for events.")
     
+    st.sidebar.markdown("# Conditions") 
     # View selection: either run seating optimization or view table layouts.
     view = st.sidebar.radio("Select View", ["Seating Arrangements", "Table Layouts"],
                             help="Choose 'Seating Arrangements' to run the optimizer or 'Table Layouts' to view the seat blueprints.")
     
     # Sidebar: Table definitions.
-    st.sidebar.header("Table Definitions")
+    st.sidebar.header("Table Layout")
     table_def_text = st.sidebar.text_area("Define tables (one per line, e.g., 'A: 8')", 
                                           value=DEFAULT_TABLE_DEF, height=100,
                                           help="Each line should be in the format 'Letter: Number', where Number is the number of seats per side.")
@@ -417,7 +426,7 @@ def main():
     TABLES, TABLE_LETTERS = parse_table_definitions(table_def_text)
     
     if view == "Seating Arrangements":
-        st.header("Seating Arrangement Optimization with Fixed Seat Diversity")
+        st.header("Optimizing conditions")
         st.markdown(
             """
             **Overview:**  
@@ -449,9 +458,9 @@ def main():
             person_genders[name] = "F"
         
         st.sidebar.header("Fixed Seat Assignments")
-        fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A,0,3')", 
-                                          value="John: A,0,0\nMary: B,1,5", height=100,
-                                          help="Each line should be in the format 'Name: TableLetter,Row,Col'.")
+        fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A12')", 
+                                          value="John: A1\nMary: B2", height=100,
+                                          help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
         fixed_positions = parse_fixed_seats(fixed_text)
         
         st.sidebar.header("Optimization Parameters")
