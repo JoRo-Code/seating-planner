@@ -483,10 +483,10 @@ def main():
 
     
     # Add download button in the sidebar at the top
-    st.sidebar.markdown("# Settings Import/Export")
+    st.sidebar.markdown("# Settings")
     
     # Download and upload buttons remain in sidebar
-    if st.sidebar.button("Download Current Settings"):
+    if st.sidebar.button("Download Settings"):
         settings = get_current_settings()
         settings_json = json.dumps(settings, indent=2)
         st.sidebar.write("Settings ready for download:")
@@ -508,7 +508,6 @@ def main():
         except Exception as e:
             st.sidebar.error(f"Error loading settings: {str(e)}")
     
-    st.sidebar.markdown("# Conditions")
     
     # Move table definitions to main content area
     st.header("Table Layout Configuration")
@@ -552,15 +551,15 @@ def main():
             html = generate_table_html(table_id, table_letter, TABLES)
             components.html(html, height=180, scrolling=False)
 
-    st.sidebar.header("Name Lists")
+    st.sidebar.header("Guests")
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
-        male_text = st.sidebar.text_area("Male Names (one per line)", 
+        male_text = st.sidebar.text_area("Males (one per line)", 
                                      value=settings["male_names"], height=150,
                                      key='male_text',
                                      on_change=lambda: None,
                                      help="Enter one male name per line.")
-        female_text = st.sidebar.text_area("Female Names (one per line)", 
+        female_text = st.sidebar.text_area("Females (one per line)", 
                                        value=settings["female_names"], height=150,
                                        key='female_text',
                                        on_change=lambda: None,
@@ -568,11 +567,11 @@ def main():
     else:
         default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
         default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
-        male_text = st.sidebar.text_area("Male Names (one per line)", value=default_male, height=150,
+        male_text = st.sidebar.text_area("Males (one per line)", value=default_male, height=150,
                                          key='male_text',
                                          on_change=lambda: None,
                                          help="Enter one male name per line.")
-        female_text = st.sidebar.text_area("Female Names (one per line)", value=default_female, height=150,
+        female_text = st.sidebar.text_area("Females (one per line)", value=default_female, height=150,
                                            key='female_text',
                                            on_change=lambda: None,
                                            help="Enter one female name per line.")
@@ -588,21 +587,21 @@ def main():
     st.sidebar.header("Fixed Seat Assignments")
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
-        fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A12')", 
+        fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
                                           value=settings["fixed_assignments"], height=100,
                                           key='fixed_text',
                                           on_change=lambda: None,
-                                          help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
+                                          help="Meaning, John will be seated at table A, seat 12. Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview.")
     else:
-        fixed_text = st.sidebar.text_area("Enter fixed assignments (e.g., 'John: A12')", 
+        fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
                                           value="John: A1\nMary: B2", height=100,
                                           key='fixed_text',
                                           on_change=lambda: None,
-                                          help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
+                                          help="Meaning, John will be seated at table A, seat 12. Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview.")
     fixed_positions = parse_fixed_seats(fixed_text)
     
 
-    st.sidebar.header("Condition Weights")
+    st.sidebar.header("Conditions")
     st.sidebar.markdown("""
         Importance of a condition. The accumulative sum of all conditions is optimized to be as low as possible. HIGHER more important. 
     """)
