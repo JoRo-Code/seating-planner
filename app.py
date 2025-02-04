@@ -405,6 +405,28 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     neighbors_info = get_neighbors_info(best_assignments, seat_neighbors, tables)
     return best_assignments, best_cost, neighbors_info
 
+def combine_all_seating_dataframes(assignments, tables, table_letters):
+    """
+    Combines seating arrangements from all tables into a single DataFrame.
+    Each row represents a seat, with columns for Table, Seat ID, and each arrangement round.
+    """
+    all_data = []
+    for table_id in sorted(tables.keys()):
+        table_letter = table_letters[table_id]
+        seats = [seat for seat in assignments[0].keys() if seat[0] == table_id]
+        seats.sort(key=lambda s: (s[1], s[2]))
+        
+        for seat in seats:
+            row_data = {
+                'Table': table_letter,
+                'Seat ID': f"{table_letter}{seats.index(seat) + 1}"
+            }
+            for round_idx, assignment in enumerate(assignments):
+                row_data[f'Arrangement {round_idx + 1}'] = assignment[seat]
+            all_data.append(row_data)
+    
+    return pd.DataFrame(all_data)
+
 #####################################
 # 8. Main App                        #
 #####################################
@@ -600,8 +622,21 @@ def main():
                 st.session_state.best_cost = best_cost
                 st.session_state.neighbors_info = neighbors_info
                 st.session_state.person_genders = person_genders
+                
+                # Create combined DataFrame and store in session state
+                combined_df = combine_all_seating_dataframes(best_assignments, TABLES, TABLE_LETTERS)
+                st.session_state.combined_df = combined_df
         
         st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
+        
+        # Add download button for combined seating arrangements
+        st.download_button(
+            label="Download All Seating Arrangements",
+            data=st.session_state.combined_df.to_csv(index=False),
+            file_name="seating_arrangements.csv",
+            mime="text/csv"
+        )
+
         st.header("Seating Arrangements by Table")
         for table_id in sorted(TABLES.keys()):
             table_letter = TABLE_LETTERS[table_id]
