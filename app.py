@@ -322,7 +322,7 @@ def generate_table_html(table_id, table_letter, tables):
     """
     Generates an HTML snippet representing the layout of one table.
     Seats are numbered sequentially (top row then bottom row).
-    Corner seats (first and last in each row) are highlighted in light red.
+    Corner seats are highlighted in light red.
     """
     num_cols = tables[table_id]
     top_row = [f"{table_letter}{i+1}" for i in range(num_cols)]
@@ -543,8 +543,8 @@ def main():
         # Show table layouts inline
         st.markdown(
             """
-            The diagram below shows the seat numbering for each table.
-            Corner seats (first and last in each row) are highlighted in light red.
+            Seat numberings for each table.
+            Corner seats are highlighted in light red.
             """
         )
         for table_id in sorted(TABLES.keys()):
@@ -601,46 +601,13 @@ def main():
                                           help="Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview")
     fixed_positions = parse_fixed_seats(fixed_text)
     
-    st.sidebar.header("Optimization Parameters")
-    if "uploaded_settings" in st.session_state:
-        settings = st.session_state.uploaded_settings
-        iterations = st.sidebar.number_input("Iterations", 
-                                        value=settings["optimization_params"]["iterations"], 
-                                        step=1000, min_value=1000,
-                                        key='iterations',
-                                        on_change=lambda: None,
-                                        help="Number of iterations for simulated annealing. More iterations may yield better results but take longer.")
-        initial_temp = st.sidebar.number_input("Initial Temperature", 
-                                          value=settings["optimization_params"]["initial_temp"], 
-                                          step=1.0,
-                                          key='initial_temp',
-                                          on_change=lambda: None,
-                                          help="The starting temperature for simulated annealing. Higher values allow more exploration.")
-        cooling_rate = st.sidebar.slider("Cooling Rate", min_value=0.990, max_value=0.9999, 
-                                    value=settings["optimization_params"]["cooling_rate"],
-                                    key='cooling_rate',
-                                    on_change=lambda: None,
-                                    help="The multiplier applied to the temperature after each iteration. Values closer to 1.0 cool more slowly.")
-    else:
-        iterations = st.sidebar.number_input("Iterations", value=20000, step=1000, min_value=1000,
-                                           key='iterations',
-                                           on_change=lambda: None,
-                                           help="Number of iterations for simulated annealing. More iterations may yield better results but take longer.")
-        initial_temp = st.sidebar.number_input("Initial Temperature", value=10.0, step=1.0,
-                                           key='initial_temp',
-                                           on_change=lambda: None,
-                                           help="The starting temperature for simulated annealing. Higher values allow more exploration.")
-        cooling_rate = st.sidebar.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=0.9995,
-                                     key='cooling_rate',
-                                     on_change=lambda: None,
-                                     help="The multiplier applied to the temperature after each iteration. Values closer to 1.0 cool more slowly.")
-    
+
     st.sidebar.header("Condition Weights")
     st.sidebar.markdown("""
-        Increased weights penalizes the condition. 
+        Importance of a condition. The accumulative sum of all conditions is optimized to be as low as possible. HIGHER more important. 
     """)
     
-    
+
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
         neighbor_weight = st.sidebar.number_input("Neighbor Weight", 
@@ -674,26 +641,61 @@ def main():
                                           on_change=lambda: None,
                                           help="Weight for penalizing boundaries between empty and non-empty seats. Higher values encourage empty seats to cluster together.")
     else:
-        neighbor_weight = st.sidebar.number_input("Neighbor Weight", value=1.0, step=0.1, format="%.1f",
+        neighbor_weight = st.sidebar.number_input("Neighbor", value=1.0, step=0.1, format="%.1f",
                                                   key='neighbor_weight',
                                                   on_change=lambda: None,
                                                   help="Weight for penalizing repeated neighbors. Higher values force more neighbor diversity.")
-        corner_weight = st.sidebar.number_input("Corner Weight", value=3.0, step=0.1, format="%.1f",
+        corner_weight = st.sidebar.number_input("Corner", value=3.0, step=0.1, format="%.1f",
                                                 key='corner_weight',
                                                 on_change=lambda: None,
                                                 help="Weight for penalizing repeated corner seatings.")
-        gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
+        gender_weight = st.sidebar.number_input("Gender", value=5.0, step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 on_change=lambda: None,
                                                 help="Weight for penalizing adjacent seats with the same gender in a row.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=2.0, step=0.1, format="%.1f",
+        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", value=2.0, step=0.1, format="%.1f",
                                                key='fixed_weight',
                                                on_change=lambda: None,
                                                help="Extra weight applied to fixed-seat persons to encourage diverse neighbors.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=5.0, step=0.1, format="%.1f",
+        empty_weight = st.sidebar.number_input("Empty Seat Clustering", value=5.0, step=0.1, format="%.1f",
                                                key='empty_weight',
                                                on_change=lambda: None,
                                                help="Weight for penalizing boundaries between empty and non-empty seats. Higher values encourage empty seats to cluster together.")
+    
+    # Replace the header with an expander
+    with st.sidebar.expander("Optimization Parameters", expanded=False):
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            iterations = st.number_input("Iterations", 
+                                    value=settings["optimization_params"]["iterations"], 
+                                    step=1000, min_value=1000,
+                                    key='iterations',
+                                    on_change=lambda: None,
+                                    help="Number of iterations for simulated annealing. More iterations may yield better results but take longer.")
+            initial_temp = st.number_input("Initial Temperature", 
+                                      value=settings["optimization_params"]["initial_temp"], 
+                                      step=1.0,
+                                      key='initial_temp',
+                                      on_change=lambda: None,
+                                      help="The starting temperature for simulated annealing. Higher values allow more exploration.")
+            cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, 
+                                value=settings["optimization_params"]["cooling_rate"],
+                                key='cooling_rate',
+                                on_change=lambda: None,
+                                help="The multiplier applied to the temperature after each iteration. Values closer to 1.0 cool more slowly.")
+        else:
+            iterations = st.number_input("Iterations", value=20000, step=1000, min_value=1000,
+                                       key='iterations',
+                                       on_change=lambda: None,
+                                       help="Number of iterations for simulated annealing. More iterations may yield better results but take longer.")
+            initial_temp = st.number_input("Initial Temperature", value=10.0, step=1.0,
+                                       key='initial_temp',
+                                       on_change=lambda: None,
+                                       help="The starting temperature for simulated annealing. Higher values allow more exploration.")
+            cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=0.9995,
+                                 key='cooling_rate',
+                                 on_change=lambda: None,
+                                 help="The multiplier applied to the temperature after each iteration. Values closer to 1.0 cool more slowly.")
     
     run_button = st.sidebar.button("Run Optimization")
     
@@ -715,6 +717,9 @@ def main():
     
     st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
     
+
+
+    st.header("Seating Arrangements")
     # Add download button for combined seating arrangements
     st.download_button(
         label="Download All Seating Arrangements",
@@ -722,12 +727,10 @@ def main():
         file_name="seating_arrangements.csv",
         mime="text/csv"
     )
-
-    st.header("Seating Arrangements by Table")
     for table_id in sorted(TABLES.keys()):
         table_letter = TABLE_LETTERS[table_id]
         df = seating_dataframe_for_table(st.session_state.best_assignments, table_id, table_letter)
-        st.subheader(f"Table {table_letter} (Total seats: {len(df)})")
+        st.subheader(f"Table {table_letter}")
         st.dataframe(df, height=300)
     
     st.header("Overall Neighbour Summary")
