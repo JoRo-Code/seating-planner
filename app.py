@@ -95,30 +95,34 @@ def parse_preferred_side_neighbours(text):
 
 def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
                  side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
-                 corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
+                 corner_weight=3.0, multiple_corner_weight=10.0,  # NEW PARAMETER
+                 gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
                  preferred_side_preferences=None, preferred_side_weight=1.0,
                  breakdown=False):
     """
-    Computes the total cost over all rounds.
-    If breakdown=True, returns (total_cost, breakdown_dict) where breakdown_dict contains:
-      - side_cost, front_cost, diagonal_cost, neighbor_cost,
-      - corner_cost, gender_cost, empty_cost, preferred_side_cost.
-    Otherwise, returns total_cost.
+    Computes the total cost over all seating rounds.
+    
+    Cost components:
+      1. Neighbor cost: penalizes repeated neighbors.
+      2. Corner cost: penalizes repeated corner seatings.
+         For each person:
+           - Base penalty: (count - 1) * corner_weight.
+           - Extra penalty is applied only when count > 2: (count - 2) * multiple_corner_weight.
+      3. Gender cost: adjacent same-gender pairs in a row.
+      4. Empty seat clustering cost.
+      5. Preferred side neighbour cost.
+    
+    If breakdown is True, returns (total_cost, breakdown_dict).
     """
-    # Gather neighbor lists and corner counts per person.
+    # --- Neighbor cost ---
     person_neighbors_by_type = defaultdict(lambda: {"side": [], "front": [], "diagonal": []})
-    person_corner_counts = defaultdict(int)
     for round_assign in assignments:
         for seat, person in round_assign.items():
-            t, row, col = seat
-            if col == 0 or col == tables[t] - 1:
-                person_corner_counts[person] += 1
             for n_type, n_list in seat_neighbors[seat].items():
                 for n_seat in n_list:
                     neighbor_person = round_assign[n_seat]
                     person_neighbors_by_type[person][n_type].append(neighbor_person)
                     
-    # Neighbor cost (by type)
     side_cost = 0
     front_cost = 0
     diagonal_cost = 0
@@ -134,16 +138,26 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
         diagonal_cost += multiplier * diagonal_weight * repeats_diag
     neighbor_cost = side_cost + front_cost + diagonal_cost
 
-    # Corner cost (per person)
-    corner_count_total = 0
+    # --- Corner cost ---
+    person_corner_counts = defaultdict(int)
+    for round_assign in assignments:
+        for seat, person in round_assign.items():
+            t, row, col = seat
+            if col == 0 or col == tables[t] - 1:
+                person_corner_counts[person] += 1
+    base_corner_cost = 0
+    extra_corner_penalty = 0
     for person, count in person_corner_counts.items():
         if person_genders.get(person, "X") == "X":
             continue
         if count > 1:
-            corner_count_total += (count - 1)
-    total_corner_cost = corner_weight * corner_count_total
+            base_corner_cost += (count - 1)
+            # Only apply extra penalty if a person sits in a corner more than twice.
+            if count > 2:
+                extra_corner_penalty += (count - 2) * multiple_corner_weight
+    total_corner_cost = (corner_weight * base_corner_cost) + extra_corner_penalty
 
-    # Gender cost (for adjacent same-gender pairs)
+    # --- Gender cost ---
     gender_count = 0
     for round_assign in assignments:
         for t, seats_per_side in tables.items():
@@ -161,7 +175,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                         gender_count += 1
     total_gender_cost = gender_weight * gender_count
 
-    # Empty seat clustering cost
+    # --- Empty seat clustering cost ---
     empty_count = 0
     for round_assign in assignments:
         for t, seats_per_side in tables.items():
@@ -174,7 +188,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                         empty_count += 1
     total_empty_cost = empty_weight * empty_count
 
-    # Preferred side neighbour cost
+    # --- Preferred side neighbour cost ---
     pref_side_count = 0
     if preferred_side_preferences is None:
         preferred_side_preferences = {}
@@ -196,6 +210,8 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
             "front_cost": front_cost,
             "diagonal_cost": diagonal_cost,
             "neighbor_cost": neighbor_cost,
+            "base_corner_cost": corner_weight * base_corner_cost,
+            "extra_corner_cost": extra_corner_penalty,
             "corner_cost": total_corner_cost,
             "gender_cost": total_gender_cost,
             "empty_cost": total_empty_cost,
@@ -246,26 +262,31 @@ def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
 def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, person_genders,
                          iterations=20000, initial_temp=10, cooling_rate=0.9995,
                          side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
-                         corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
+                         corner_weight=3.0, multiple_corner_weight=10.0,  # NEW PARAMETER
+                         gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
                          preferred_side_preferences=None, preferred_side_weight=1.0,
                          record_history=True):
     """
     Uses simulated annealing to optimize seating assignments.
     Optionally records a history of cost breakdowns every 100 iterations.
-    Returns best_assignments, best_cost, and cost_history (a list of dicts keyed by iteration).
+    Returns best_assignments, best_cost, and cost_history.
     """
     if record_history:
-        current_cost, current_breakdown = compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                                       side_weight, front_weight, diagonal_weight, corner_weight,
-                                                       gender_weight, fixed_weight, empty_weight,
-                                                       preferred_side_preferences, preferred_side_weight,
-                                                       breakdown=True)
+        current_cost, current_breakdown = compute_cost(
+            assignments, seat_neighbors, tables, person_genders, fixed_positions,
+            side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+            gender_weight, fixed_weight, empty_weight,
+            preferred_side_preferences, preferred_side_weight,
+            breakdown=True
+        )
     else:
-        current_cost = compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                    side_weight, front_weight, diagonal_weight, corner_weight,
-                                    gender_weight, fixed_weight, empty_weight,
-                                    preferred_side_preferences, preferred_side_weight,
-                                    breakdown=False)
+        current_cost = compute_cost(
+            assignments, seat_neighbors, tables, person_genders, fixed_positions,
+            side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+            gender_weight, fixed_weight, empty_weight,
+            preferred_side_preferences, preferred_side_weight,
+            breakdown=False
+        )
     best_cost = current_cost
     best_assignments = copy.deepcopy(assignments)
     num_rounds = len(assignments)
@@ -286,17 +307,21 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
         seat1, seat2 = random.sample(free_seats, 2)
         assignments[r][seat1], assignments[r][seat2] = assignments[r][seat2], assignments[r][seat1]
         if record_history:
-            new_cost, new_breakdown = compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                                   side_weight, front_weight, diagonal_weight, corner_weight,
-                                                   gender_weight, fixed_weight, empty_weight,
-                                                   preferred_side_preferences, preferred_side_weight,
-                                                   breakdown=True)
+            new_cost, new_breakdown = compute_cost(
+                assignments, seat_neighbors, tables, person_genders, fixed_positions,
+                side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+                gender_weight, fixed_weight, empty_weight,
+                preferred_side_preferences, preferred_side_weight,
+                breakdown=True
+            )
         else:
-            new_cost = compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                    side_weight, front_weight, diagonal_weight, corner_weight,
-                                    gender_weight, fixed_weight, empty_weight,
-                                    preferred_side_preferences, preferred_side_weight,
-                                    breakdown=False)
+            new_cost = compute_cost(
+                assignments, seat_neighbors, tables, person_genders, fixed_positions,
+                side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+                gender_weight, fixed_weight, empty_weight,
+                preferred_side_preferences, preferred_side_weight,
+                breakdown=False
+            )
         delta = new_cost - current_cost
         if delta < 0 or random.random() < math.exp(-delta / temp):
             current_cost = new_cost
@@ -310,7 +335,6 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
         temp *= cooling_rate
 
         if record_history and (iter_num % 100 == 0):
-            # Record the cost breakdown every 100 iterations.
             cost_history.append({"iteration": iter_num, **current_breakdown})
     if record_history:
         return best_assignments, best_cost, cost_history
@@ -324,24 +348,22 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
 def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, person_genders, fixed_positions,
                                       preferred_side_preferences, weights):
     """
-    Computes a cost breakdown per person from the best assignments.
+    Computes a cost breakdown per person.
     The returned dict maps person -> dict with keys:
        side_cost, front_cost, diagonal_cost, neighbor_cost,
        corner_cost, preferred_side_cost, gender_cost, empty_cost, total_cost.
-       
-    Note: Gender and empty costs are attributed by splitting the pair cost.
+       The corner_cost includes both the base penalty and extra penalty for multiple corners.
     """
-    # Unpack weight parameters
     side_weight = weights.get("side_neighbour_weight", 1.0)
     front_weight = weights.get("front_neighbour_weight", 1.0)
     diagonal_weight = weights.get("diagonal_neighbour_weight", 1.0)
     corner_weight = weights.get("corner_weight", 3.0)
+    multiple_corner_weight = weights.get("multiple_corner_weight", 10.0)  # NEW PARAMETER
     gender_weight = weights.get("gender_weight", 5.0)
     fixed_weight = weights.get("fixed_weight", 2.0)
     empty_weight = weights.get("empty_weight", 5.0)
     preferred_side_weight = weights.get("preferred_side_weight", 1.0)
     
-    # Initialize dictionaries.
     indiv_breakdown = {}
     for person in person_genders:
         indiv_breakdown[person] = {
@@ -355,7 +377,7 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
             "empty_cost": 0,
             "total_cost": 0
         }
-    # Compute neighbor cost per person
+    # Neighbor cost per person.
     indiv_neighbors = defaultdict(lambda: {"side": [], "front": [], "diagonal": []})
     for round_assign in assignments:
         for seat, person in round_assign.items():
@@ -377,7 +399,7 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
         indiv_breakdown[person]["diagonal_cost"] = cost_diag
         indiv_breakdown[person]["neighbor_cost"] = cost_side + cost_front + cost_diag
 
-    # Corner cost per person
+    # Corner cost per person.
     corner_count = defaultdict(int)
     for round_assign in assignments:
         for seat, person in round_assign.items():
@@ -388,9 +410,13 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
         if person_genders.get(person, "X") == "X":
             continue
         if count > 1:
-            indiv_breakdown[person]["corner_cost"] = (count - 1) * corner_weight
+            base_cost = (count - 1) * corner_weight
+            extra_cost = 0
+            if count > 2:
+                extra_cost = (count - 2) * multiple_corner_weight
+            indiv_breakdown[person]["corner_cost"] = base_cost + extra_cost
 
-    # Preferred side neighbour cost per person
+    # Preferred side neighbour cost per person.
     if preferred_side_preferences is None:
         preferred_side_preferences = {}
     for round_assign in assignments:
@@ -401,7 +427,7 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                 missing = sum(1 for d in desired if d not in side_nbrs)
                 indiv_breakdown[person]["preferred_side_cost"] += missing * preferred_side_weight
 
-    # Gender cost: For each adjacent same-gender pair, attribute half cost to each person.
+    # Gender cost: for each adjacent same-gender pair, attribute half cost to each person.
     for round_assign in assignments:
         for t, seats_per_side in tables.items():
             for row in [0, 1]:
@@ -416,7 +442,8 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                     if g1 == g2:
                         indiv_breakdown[p1]["gender_cost"] += gender_weight / 2
                         indiv_breakdown[p2]["gender_cost"] += gender_weight / 2
-    # Empty cost: For each adjacent pair where one is empty and one is not, assign the cost to the non-empty person.
+
+    # Empty cost: for each adjacent pair where one is empty and one is not, assign cost to the non-empty person.
     for round_assign in assignments:
         for t, seats_per_side in tables.items():
             for row in [0, 1]:
@@ -429,10 +456,13 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                     elif p2.startswith("Empty") and not p1.startswith("Empty"):
                         indiv_breakdown[p1]["empty_cost"] += empty_weight
 
-    # Total cost per person (sum of the attributable components)
+    # Total cost per person.
     for person, comp in indiv_breakdown.items():
-        comp["total_cost"] = comp["neighbor_cost"] + comp["corner_cost"] + comp["preferred_side_cost"] + comp["gender_cost"] + comp["empty_cost"]
-
+        comp["total_cost"] = (comp["neighbor_cost"] +
+                              comp["corner_cost"] +
+                              comp["preferred_side_cost"] +
+                              comp["gender_cost"] +
+                              comp["empty_cost"])
     return indiv_breakdown
 
 #####################################
@@ -466,11 +496,11 @@ def parse_fixed_seats(text):
             name = name_part.strip()
             seat_id = seat_part.strip().upper()
             
-            # Extract table letter and seat number
+            # Extract table letter and seat number.
             table_letter = seat_id[0]
-            seat_num = int(seat_id[1:]) - 1  # 0-based index
+            seat_num = int(seat_id[1:]) - 1  # 0-based index.
             
-            # Find table_id from table letter
+            # Find table_id from table letter.
             table_id = None
             for tid, letter in TABLE_LETTERS.items():
                 if letter == table_letter:
@@ -548,15 +578,16 @@ def display_table_layouts(tables, table_letters):
 
 def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
                                       side_weight, front_weight, diagonal_weight,
-                                      corner_weight, gender_weight, fixed_weight, empty_weight,
+                                      corner_weight, multiple_corner_weight,  # NEW PARAMETER
+                                      gender_weight, fixed_weight, empty_weight,
                                       people, person_genders, fixed_positions, tables,
                                       preferred_side_preferences, preferred_side_weight):
     """
     Runs the seating optimization and returns:
       - best_assignments: list (per round) of seat -> person assignments,
       - best_cost: final cost,
-      - neighbors_info: dict mapping each person to a dict of neighbour types,
-      - corner_count: dict mapping each person to the number of rounds they sat at a corner,
+      - neighbors_info: dict mapping each person to neighbor info,
+      - corner_count: dict mapping each person to corner counts,
       - cost_history: list of cost breakdowns over iterations.
     
     If there are fewer names than seats, fills remaining seats with "Empty" (gender "X").
@@ -575,7 +606,8 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     best_assignments, best_cost, cost_history = optimize_assignments(
         assignments, seat_neighbors, tables, fixed_positions, person_genders,
         iterations, initial_temp, cooling_rate,
-        side_weight, front_weight, diagonal_weight, corner_weight, gender_weight, fixed_weight, empty_weight,
+        side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+        gender_weight, fixed_weight, empty_weight,
         preferred_side_preferences, preferred_side_weight,
         record_history=True
     )
@@ -618,6 +650,7 @@ def get_current_settings():
     front_weight = st.session_state.front_weight if 'front_weight' in st.session_state else 1.0
     diagonal_weight = st.session_state.diagonal_weight if 'diagonal_weight' in st.session_state else 1.0
     corner_weight = st.session_state.corner_weight if 'corner_weight' in st.session_state else 3.0
+    multiple_corner_weight = st.session_state.multiple_corner_weight if 'multiple_corner_weight' in st.session_state else 10.0
     gender_weight = st.session_state.gender_weight if 'gender_weight' in st.session_state else 5.0
     fixed_weight = st.session_state.fixed_weight if 'fixed_weight' in st.session_state else 2.0
     empty_weight = st.session_state.empty_weight if 'empty_weight' in st.session_state else 5.0
@@ -639,6 +672,7 @@ def get_current_settings():
             "front_neighbour_weight": front_weight,
             "diagonal_neighbour_weight": diagonal_weight,
             "corner_weight": corner_weight,
+            "multiple_corner_weight": multiple_corner_weight,
             "gender_weight": gender_weight,
             "fixed_weight": fixed_weight,
             "empty_weight": empty_weight,
@@ -780,7 +814,12 @@ def main():
                                                 value=settings["weights"]["corner_weight"], 
                                                 step=0.1, format="%.1f",
                                                 key='corner_weight',
-                                                help="Weight for repeated corner seatings.")
+                                                help="Base penalty for each extra corner (after the first).")
+        multiple_corner_weight = st.sidebar.number_input("Multiple Corner Weight", 
+                                                         value=settings["weights"].get("multiple_corner_weight", 10.0),
+                                                         step=0.1, format="%.1f",
+                                                         key='multiple_corner_weight',
+                                                         help="Extra penalty for each additional corner beyond two.")
         gender_weight = st.sidebar.number_input("Gender Weight", 
                                                 value=settings["weights"]["gender_weight"], 
                                                 step=0.1, format="%.1f",
@@ -813,7 +852,10 @@ def main():
                                                   help="Weight for repeated diagonal neighbours.")
         corner_weight = st.sidebar.number_input("Corner Weight", value=3.0, step=0.1, format="%.1f",
                                                 key='corner_weight',
-                                                help="Weight for repeated corner seatings.")
+                                                help="Base penalty for each extra corner (after the first).")
+        multiple_corner_weight = st.sidebar.number_input("Multiple Corner Weight", value=10.0, step=0.1, format="%.1f",
+                                                         key='multiple_corner_weight',
+                                                         help="Extra penalty for each additional corner beyond two.")
         gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 help="Weight for adjacent same-gender seats.")
@@ -862,7 +904,8 @@ def main():
             best_assignments, best_cost, neighbors_info, corner_count, cost_history = run_optimization_and_build_data(
                 iterations, initial_temp, cooling_rate,
                 side_weight, front_weight, diagonal_weight,
-                corner_weight, gender_weight, fixed_weight, empty_weight,
+                corner_weight, multiple_corner_weight,  # NEW PARAMETER
+                gender_weight, fixed_weight, empty_weight,
                 people, person_genders, fixed_positions, TABLES,
                 preferred_side_preferences, preferred_side_weight
             )
@@ -876,20 +919,22 @@ def main():
             combined_df = combine_all_seating_dataframes(best_assignments, TABLES, TABLE_LETTERS)
             st.session_state.combined_df = combined_df
             
-            # Compute per-person cost breakdown using the new function.
             weights = {
                 "side_neighbour_weight": side_weight,
                 "front_neighbour_weight": front_weight,
                 "diagonal_neighbour_weight": diagonal_weight,
                 "corner_weight": corner_weight,
+                "multiple_corner_weight": multiple_corner_weight,
                 "gender_weight": gender_weight,
                 "fixed_weight": fixed_weight,
                 "empty_weight": empty_weight,
                 "preferred_side_weight": preferred_side_weight
             }
-            indiv_costs = compute_individual_cost_breakdown(best_assignments, compute_seat_neighbors(TABLES), TABLES,
-                                                              person_genders, fixed_positions, preferred_side_preferences,
-                                                              weights)
+            indiv_costs = compute_individual_cost_breakdown(
+                best_assignments, compute_seat_neighbors(TABLES), TABLES,
+                person_genders, fixed_positions, preferred_side_preferences,
+                weights
+            )
             st.session_state.indiv_costs = indiv_costs
     
     st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
@@ -922,13 +967,11 @@ def main():
     st.dataframe(nbr_df, height=400)
     
     st.header("Cost Over Iterations")
-    # Build a DataFrame from cost_history (each record contains iteration and cost components)
     cost_hist_df = pd.DataFrame(st.session_state.cost_history)
     cost_hist_df = cost_hist_df.set_index("iteration")
     st.line_chart(cost_hist_df[["total_cost", "neighbor_cost", "corner_cost", "gender_cost", "empty_cost", "preferred_side_cost"]])
     
     st.header("Individual Cost Breakdown")
-    # Build a table from the individual cost breakdown
     indiv_data = []
     for person, comp in st.session_state.indiv_costs.items():
         indiv_data.append({
