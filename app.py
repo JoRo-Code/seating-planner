@@ -455,8 +455,17 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                          record_history=True):
     """
     Uses simulated annealing to optimize seating assignments.
-    Optionally records a history of cost breakdowns every 100 iterations.
-    Returns best_assignments, best_cost, and cost_history.
+    Now, in addition to swapping two free seats in a round, this function also occasionally
+    attempts a flip move: it picks a table in a round and flips a contiguous block of free seats 
+    (from a corner) horizontally. The idea is to correct, for example, a same‐gender pairing in the middle.
+    
+    Parameters:
+      ... (same as before)
+      special_cost_multipliers: dict mapping person to a multiplier (optional)
+      record_history: if True, record the cost history
+      
+    Returns:
+      best_assignments, best_cost, cost_history
     """
     if special_cost_multipliers is None:
         special_cost_multipliers = {}
@@ -490,45 +499,148 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     if record_history:
         cost_history.append({"iteration": 0, **current_breakdown})
     
+    # New parameter: chance to try a flip move instead of a swap move.
+    flip_probability = 0.2  # 20% chance; adjust as desired
+
     for iter_num in range(1, iterations + 1):
-        r = random.randint(0, num_rounds - 1)
-        free_seats = free_seats_by_round[r]
-        seat1, seat2 = random.sample(free_seats, 2)
-        assignments[r][seat1], assignments[r][seat2] = assignments[r][seat2], assignments[r][seat1]
-        if record_history:
-            new_cost, new_breakdown = compute_cost(
-                assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                side_weight, front_weight, diagonal_weight, corner_weight,
-                gender_weight, fixed_weight, empty_weight,
-                preferred_side_preferences, preferred_side_weight,
-                uniformity_weight, special_cost_multipliers, breakdown=True
-            )
+        # Decide whether to try a flip move or the usual swap move.
+        if random.random() < flip_probability:
+            # ------------------ FLIP MOVE ------------------
+            # Choose a round at random.
+            r = random.randint(0, num_rounds - 1)
+            # Choose a random table.
+            table_id = random.choice(list(tables.keys()))
+            seats_per_side = tables[table_id]
+            # Get free seats (i.e. non-fixed seats) for this table in round r.
+            free_seats_table = [s for s in free_seats_by_round[r] if s[0] == table_id]
+            # Choose a corner at random: "left" or "right"
+            corner = random.choice(["left", "right"])
+            
+            # Define a helper to compute the maximum contiguous block width from a given corner
+            def max_block_width_for_row(row, corner):
+                width = 0
+                if corner == "left":
+                    for col in range(seats_per_side):
+                        if (table_id, row, col) in free_seats_table:
+                            width += 1
+                        else:
+                            break
+                else:  # "right" corner: start at the rightmost column and go left
+                    for col in range(seats_per_side - 1, -1, -1):
+                        if (table_id, row, col) in free_seats_table:
+                            width += 1
+                        else:
+                            break
+                return width
+
+            max_width_row0 = max_block_width_for_row(0, corner)
+            max_width_row1 = max_block_width_for_row(1, corner)
+            max_width = min(max_width_row0, max_width_row1)
+            # If no contiguous free block exists, skip the flip move.
+            if max_width < 1:
+                move_type = "swap"
+            else:
+                move_type = "flip"
         else:
-            new_cost = compute_cost(
-                assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                side_weight, front_weight, diagonal_weight, corner_weight,
-                gender_weight, fixed_weight, empty_weight,
-                preferred_side_preferences, preferred_side_weight,
-                uniformity_weight, special_cost_multipliers, breakdown=False
-            )
-        delta = new_cost - current_cost
-        if delta < 0 or random.random() < math.exp(-delta / temp):
-            current_cost = new_cost
-            if record_history:
-                current_breakdown = new_breakdown
-            if new_cost < best_cost:
-                best_cost = new_cost
-                best_assignments = copy.deepcopy(assignments)
-        else:
+            move_type = "swap"
+            
+        if move_type == "swap":
+            # ------------------ SWAP MOVE (existing move) ------------------
+            r = random.randint(0, num_rounds - 1)
+            seat1, seat2 = random.sample(free_seats_by_round[r], 2)
             assignments[r][seat1], assignments[r][seat2] = assignments[r][seat2], assignments[r][seat1]
+            
+            if record_history:
+                new_cost, new_breakdown = compute_cost(
+                    assignments, seat_neighbors, tables, person_genders, fixed_positions,
+                    side_weight, front_weight, diagonal_weight, corner_weight,
+                    gender_weight, fixed_weight, empty_weight,
+                    preferred_side_preferences, preferred_side_weight,
+                    uniformity_weight, special_cost_multipliers, breakdown=True
+                )
+            else:
+                new_cost = compute_cost(
+                    assignments, seat_neighbors, tables, person_genders, fixed_positions,
+                    side_weight, front_weight, diagonal_weight, corner_weight,
+                    gender_weight, fixed_weight, empty_weight,
+                    preferred_side_preferences, preferred_side_weight,
+                    uniformity_weight, special_cost_multipliers, breakdown=False
+                )
+            delta = new_cost - current_cost
+            if delta < 0 or random.random() < math.exp(-delta / temp):
+                current_cost = new_cost
+                if new_cost < best_cost:
+                    best_cost = new_cost
+                    best_assignments = copy.deepcopy(assignments)
+                if record_history:
+                    current_breakdown = new_breakdown
+            else:
+                # revert the swap
+                assignments[r][seat1], assignments[r][seat2] = assignments[r][seat2], assignments[r][seat1]
+        elif move_type == "flip":
+            # ------------------ FLIP MOVE ------------------
+            # We already chose r, table_id, corner, and computed max_width.
+            # Choose a block width k (at least 1) randomly from the available range.
+            k = random.randint(1, max_width)
+            # Identify the block of seats to flip.
+            # (Remember: each table has two rows.)
+            if corner == "left":
+                block_seats = [(table_id, row, col) for row in [0, 1] for col in range(k)]
+            else:  # right corner
+                block_seats = [(table_id, row, col) for row in [0, 1] for col in range(seats_per_side - k, seats_per_side)]
+            # Save the current occupants of these seats so that we can revert if needed.
+            old_block = {seat: assignments[r][seat] for seat in block_seats}
+            # Create a new assignment for round r by flipping each row’s block.
+            new_assignment = assignments[r].copy()
+            for row in [0, 1]:
+                if corner == "left":
+                    row_seats = [(table_id, row, col) for col in range(k)]
+                else:
+                    row_seats = [(table_id, row, col) for col in range(seats_per_side - k, seats_per_side)]
+                reversed_row = list(reversed(row_seats))
+                for original_seat, flipped_seat in zip(row_seats, reversed_row):
+                    new_assignment[original_seat] = assignments[r][flipped_seat]
+            assignments[r] = new_assignment
+            
+            if record_history:
+                new_cost, new_breakdown = compute_cost(
+                    assignments, seat_neighbors, tables, person_genders, fixed_positions,
+                    side_weight, front_weight, diagonal_weight, corner_weight,
+                    gender_weight, fixed_weight, empty_weight,
+                    preferred_side_preferences, preferred_side_weight,
+                    uniformity_weight, special_cost_multipliers, breakdown=True
+                )
+            else:
+                new_cost = compute_cost(
+                    assignments, seat_neighbors, tables, person_genders, fixed_positions,
+                    side_weight, front_weight, diagonal_weight, corner_weight,
+                    gender_weight, fixed_weight, empty_weight,
+                    preferred_side_preferences, preferred_side_weight,
+                    uniformity_weight, special_cost_multipliers, breakdown=False
+                )
+            delta = new_cost - current_cost
+            if delta < 0 or random.random() < math.exp(-delta / temp):
+                current_cost = new_cost
+                if new_cost < best_cost:
+                    best_cost = new_cost
+                    best_assignments = copy.deepcopy(assignments)
+                if record_history:
+                    current_breakdown = new_breakdown
+            else:
+                # Revert the flip move.
+                for seat, occupant in old_block.items():
+                    assignments[r][seat] = occupant
+
         temp *= cooling_rate
 
         if record_history and (iter_num % 100 == 0):
             cost_history.append({"iteration": iter_num, **current_breakdown})
+    
     if record_history:
         return best_assignments, best_cost, cost_history
     else:
         return best_assignments, best_cost
+
 
 #####################################
 # 4b. Per-Person Cost Breakdown       #
