@@ -60,6 +60,7 @@ DEFAULT_UNIFORMITY_WEIGHT = 1.0
 DEFAULT_ITERATIONS = 20000
 DEFAULT_INITIAL_TEMP = 10.0
 DEFAULT_COOLING_RATE = 0.9995
+DEFAULT_NUM_ROUNDS = 3
 
 #####################################
 # 1. Table Definitions & Utilities  #
@@ -591,7 +592,8 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
                                       gender_weight, fixed_weight, empty_weight,
                                       people, person_genders, fixed_positions, tables,
                                       preferred_side_preferences, preferred_side_weight,
-                                      uniformity_weight, special_cost_multipliers):
+                                      uniformity_weight, special_cost_multipliers,
+                                      num_rounds=3):
     """
     Runs the seating optimization and returns:
       - best_assignments: list (per round) of seat -> person assignments,
@@ -612,7 +614,7 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     elif len(people) > total_seats:
         people = people[:total_seats]
     seat_neighbors = compute_seat_neighbors(tables)
-    assignments = initialize_assignments(people, tables, fixed_positions, num_rounds=3)
+    assignments = initialize_assignments(people, tables, fixed_positions, num_rounds=num_rounds)
     best_assignments, best_cost, cost_history = optimize_assignments(
         assignments, seat_neighbors, tables, fixed_positions, person_genders,
         iterations, initial_temp, cooling_rate,
@@ -680,6 +682,7 @@ def get_current_settings():
             "iterations": iterations,
             "initial_temp": initial_temp,
             "cooling_rate": cooling_rate,
+            "num_rounds": num_rounds
         },
         "weights": {
             "side_neighbour_weight": side_weight,
@@ -912,6 +915,11 @@ def main():
                                      value=settings["optimization_params"]["cooling_rate"],
                                      key='cooling_rate',
                                      help="Cooling multiplier per iteration.")
+            num_rounds = st.number_input("Number of Rounds", 
+                                         value=settings["optimization_params"].get("num_rounds", DEFAULT_NUM_ROUNDS),
+                                         step=1, min_value=1,
+                                         key='num_rounds',
+                                         help="Number of seating arrangements to generate.")
         else:
             iterations = st.number_input("Iterations", value=DEFAULT_ITERATIONS, step=1000, min_value=1000,
                                          key='iterations',
@@ -922,6 +930,11 @@ def main():
             cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=DEFAULT_COOLING_RATE,
                                      key='cooling_rate',
                                      help="Cooling multiplier per iteration.")
+            num_rounds = st.number_input("Number of Rounds", 
+                                         value=DEFAULT_NUM_ROUNDS,
+                                         step=1, min_value=1,
+                                         key='num_rounds',
+                                         help="Number of seating arrangements to generate.")
     
     run_button = st.sidebar.button("Run Optimization")
     
@@ -934,7 +947,8 @@ def main():
                 gender_weight, fixed_weight, empty_weight,
                 people, person_genders, fixed_positions, TABLES,
                 preferred_side_preferences, preferred_side_weight,
-                uniformity_weight, special_cost_multipliers
+                uniformity_weight, special_cost_multipliers,
+                num_rounds=num_rounds
             )
             st.session_state.best_assignments = best_assignments
             st.session_state.best_cost = best_cost
