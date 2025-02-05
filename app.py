@@ -670,6 +670,7 @@ def get_current_settings():
     preferred_side_weight = st.session_state.preferred_side_weight if 'preferred_side_weight' in st.session_state else DEFAULT_PREFERRED_SIDE_WEIGHT
     uniformity_weight = st.session_state.uniformity_weight if 'uniformity_weight' in st.session_state else DEFAULT_UNIFORMITY_WEIGHT
     special_cost_multipliers = parse_special_cost_multipliers(special_cost_text)
+    num_rounds = st.session_state.num_rounds if 'num_rounds' in st.session_state else DEFAULT_NUM_ROUNDS
     
     return {
         "table_definitions": table_def_text,
