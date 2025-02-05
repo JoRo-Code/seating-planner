@@ -206,13 +206,17 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                                                )
     # Adjust each individual's cost by the special multiplier (default=1.0)
     adjusted_costs = {}
-    regular_costs = {}  # Track costs for persons without special multipliers
-    for person in indiv:
+    regular_costs = {} # used for uniformity penalty
+    total_costs = {}  # Sum across cost types from all persons
+    for person, breakdown in indiv.items():
         multiplier = special_cost_multipliers.get(person, 1.0)
-        cost = indiv[person]["total_cost"] * multiplier
+        cost = breakdown["total_cost"] * multiplier
         adjusted_costs[person] = cost
         if person not in special_cost_multipliers:
             regular_costs[person] = cost
+        
+        for cost_type, cost_val in breakdown.items():
+            total_costs[cost_type] = total_costs.get(cost_type, 0.0) + cost_val * multiplier
 
     overall_indiv_cost = sum(adjusted_costs.values())
     
@@ -233,13 +237,14 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
         uniformity_penalty = 0
 
     total_cost = overall_indiv_cost + uniformity_penalty
-
+    
     if breakdown:
         breakdown_dict = {
             "overall_indiv_cost": overall_indiv_cost,
             "uniformity_cost": uniformity_penalty,
             "total_cost": total_cost,
             "adjusted_individual_costs": adjusted_costs,
+            **total_costs
         }
         return total_cost, breakdown_dict
     else:
@@ -1612,13 +1617,12 @@ def main():
     st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
 
     with st.expander("Cost Breakdown"):
-    
         st.header("Cost Over Iterations")
         cost_hist_df = pd.DataFrame(st.session_state.cost_history)
         cost_hist_df = cost_hist_df.set_index("iteration")
-        # Now using keys that exist in our breakdown dictionary:
-        st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost" ]])
-        
+        numeric_cols = cost_hist_df.select_dtypes(include=['number']).columns
+        st.line_chart(cost_hist_df[numeric_cols])
+    
         st.header("Individual Cost Breakdown")
         indiv_data = []
         for person, comp in st.session_state.indiv_costs.items():
