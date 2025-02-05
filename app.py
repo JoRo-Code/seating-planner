@@ -714,8 +714,8 @@ def get_current_settings():
 def generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights):
     """
     Generates an HTML representation of one table for one seating arrangement.
-    - arrangement: a dict mapping seat (table, row, col) to occupant name.
-    - highlights: a dict mapping seat tuples to a highlight category:
+    - arrangement: dict mapping seat (table, row, col) to occupant name.
+    - highlights: dict mapping seat tuples to a highlight category:
          "selected" for the chosen person,
          "side" for immediate (side) neighbours,
          "other" for front and diagonal neighbours.
@@ -731,18 +731,16 @@ def generate_table_html_with_highlights(arrangement, table_id, table_letter, tab
         "side": "#90EE90",      # light green
         "other": "#ADD8E6"      # light blue
     }
+    
     def get_bg_color(row, col):
         seat = (table_id, row, col)
         if seat in highlights:
             return highlight_colors.get(highlights[seat], "#ffffff")
         else:
-            # Use default colors: corner seats get a light red background.
-            if col == 0 or col == num_cols - 1:
-                return "#ffcccc"
-            else:
-                return "#ffffff"
+            # Default background is now white for all seats.
+            return "#ffffff"
     
-    # Build the two rows (top row: row 0, bottom row: row 1).
+    # Build the two rows: top row (row 0) and bottom row (row 1).
     top_html = "<div style='display:flex; justify-content:center;'>"
     for col in range(num_cols):
         seat = (table_id, 0, col)
@@ -775,6 +773,7 @@ def generate_table_html_with_highlights(arrangement, table_id, table_letter, tab
     </html>
     """
     return full_html
+
 
 def display_highlighted_arrangements_by_names(selected_person, best_assignments, tables, table_letters, aggregated_neighbors):
     """
