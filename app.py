@@ -778,28 +778,27 @@ def generate_table_html_with_highlights(arrangement, table_id, table_letter, tab
 def display_highlighted_arrangements_by_names(selected_person, best_assignments, tables, table_letters, aggregated_neighbors):
     """
     Displays each seating arrangement by highlighting seats based on occupant names.
-    
-    Parameters:
-      - selected_person: the name of the person selected.
-      - best_assignments: a list of seating arrangements (one per round).
-      - tables, table_letters: your table configuration.
-      - aggregated_neighbors: a dict with keys "side", "front", "diagonal" containing the aggregated neighbor names
-          for the selected person (from your neighbor summary).
-          
-    For each arrangement, a seat is highlighted:
-      - "selected" (gold) if the occupant is the selected person.
-      - "side" (light green) if the occupant’s name is in aggregated_neighbors["side"].
-      - "other" (light blue) if the occupant’s name is in aggregated_neighbors["front"] ∪ aggregated_neighbors["diagonal"].
     """
-    # --- Display a Legend ---
+    # --- Display a Legend with styled boxes ---
     st.markdown("""
-    **Legend:**  
-    <span style="background-color: #FFD700; padding: 4px 8px; border: 1px solid #000; margin-right: 8px;">Selected Person</span>  
-    <span style="background-color: #90EE90; padding: 4px 8px; border: 1px solid #000; margin-right: 8px;">Immediate (Side) Neighbour</span>  
-    <span style="background-color: #ADD8E6; padding: 4px 8px; border: 1px solid #000;">Front/Diagonal Neighbour</span>
+    <div style="margin-bottom: 20px;">
+        <h4 style="margin-bottom: 10px;"></h4>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center;">
+                <div style="width: 30px; height: 30px; background-color: #FFD700; border: 1px solid #000; margin-right: 8px;"></div>
+                <span>Selected Person</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <div style="width: 30px; height: 30px; background-color: #90EE90; border: 1px solid #000; margin-right: 8px;"></div>
+                <span>Immediate (Side) Neighbour</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <div style="width: 30px; height: 30px; background-color: #ADD8E6; border: 1px solid #000; margin-right: 8px;"></div>
+                <span>Front/Diagonal Neighbour</span>
+            </div>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
-    
-    st.header(f"Aggregated Highlights for **{selected_person}**")
     
     # Combine front and diagonal into a single set for "other" neighbors.
     other_neighbors = aggregated_neighbors.get("front", set()) | aggregated_neighbors.get("diagonal", set())
@@ -894,37 +893,37 @@ def main():
 
     
     # Table Layout Configuration
-    st.header("Table Layout Configuration")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if "uploaded_settings" in st.session_state:
-            settings = st.session_state.uploaded_settings
-            table_def_text = st.text_area(
-                "Define tables (e.g., 'A: 8')", 
-                value=settings["table_definitions"],
-                height=150,
-                key='table_def_text',
-                help="Each line: Letter: Number"
-            )
-        else:
-            table_def_text = st.text_area(
-                "Define tables (e.g., 'A: 8')", 
-                value=DEFAULT_TABLE_DEF,
-                height=150,
-                key='table_def_text',
-                help="Each line: Letter: Number"
-            )
-    global TABLES, TABLE_LETTERS
-    TABLES, TABLE_LETTERS = parse_table_definitions(table_def_text)
-    with col2:
-        st.markdown("Seat numberings for each table. Corner seats are highlighted in light red.")
-        for table_id in sorted(TABLES.keys()):
-            table_letter = TABLE_LETTERS[table_id]
-            html = generate_table_html(table_id, table_letter, TABLES)
-            components.html(html, height=180, scrolling=False)
-    
-    run_button = st.sidebar.button("Run Optimization", type="primary")
-    
+    with st.expander("Table Configurations"):
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            if "uploaded_settings" in st.session_state:
+                settings = st.session_state.uploaded_settings
+                table_def_text = st.text_area(
+                    "Define tables (e.g., 'A: 8')", 
+                    value=settings["table_definitions"],
+                    height=150,
+                    key='table_def_text',
+                    help="Each line: Letter: Number"
+                )
+            else:
+                table_def_text = st.text_area(
+                    "Define tables (e.g., 'A: 8')", 
+                    value=DEFAULT_TABLE_DEF,
+                    height=150,
+                    key='table_def_text',
+                    help="Each line: Letter: Number"
+                )
+        global TABLES, TABLE_LETTERS
+        TABLES, TABLE_LETTERS = parse_table_definitions(table_def_text)
+        with col2:
+            st.markdown("Seat numberings for each table. Corner seats are highlighted in light red.")
+            for table_id in sorted(TABLES.keys()):
+                table_letter = TABLE_LETTERS[table_id]
+                html = generate_table_html(table_id, table_letter, TABLES)
+                components.html(html, height=180, scrolling=False)
+        
+        run_button = st.sidebar.button("Run Optimization", type="primary")
+        
     with st.sidebar.expander("Optimization Parameters", expanded=False):
         if "uploaded_settings" in st.session_state:
             settings = st.session_state.uploaded_settings
@@ -974,16 +973,26 @@ def main():
             male_text = st.text_area("Males (one per line)", 
                                             value=settings["male_names"], height=150,
                                             key='male_text', help="One male name per line.")
+            male_count = len([name for name in male_text.splitlines() if name.strip()])
+            st.caption(f"Male count: {male_count}")
+            
             female_text = st.text_area("Females (one per line)", 
                                             value=settings["female_names"], height=150,
                                             key='female_text', help="One female name per line.")
+            female_count = len([name for name in female_text.splitlines() if name.strip()])
+            st.caption(f"Female count: {female_count}")
         else:
             default_male = DEFAULT_MALE_NAMES
             default_female = DEFAULT_FEMALE_NAMES
             male_text = st.text_area("Males (one per line)", value=default_male, height=150,
                                             key='male_text', help="One male name per line.")
+            male_count = len([name for name in male_text.splitlines() if name.strip()])
+            st.caption(f"Male count: {male_count}")
+            
             female_text = st.text_area("Females (one per line)", value=default_female, height=150,
                                             key='female_text', help="One female name per line.")
+            female_count = len([name for name in female_text.splitlines() if name.strip()])
+            st.caption(f"Female count: {female_count}")
         male_names = [name.strip() for name in male_text.splitlines() if name.strip()]
         female_names = [name.strip() for name in female_text.splitlines() if name.strip()]
         people = male_names + female_names
@@ -1184,62 +1193,64 @@ def main():
             st.session_state.indiv_costs = indiv_costs
     
     st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
-    
-    st.header("Cost Over Iterations")
-    cost_hist_df = pd.DataFrame(st.session_state.cost_history)
-    cost_hist_df = cost_hist_df.set_index("iteration")
-    # Now using keys that exist in our breakdown dictionary:
-    st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost" ]])
-    
-    st.header("Individual Cost Breakdown")
-    indiv_data = []
-    for person, comp in st.session_state.indiv_costs.items():
-        indiv_data.append({
-            "Person": person,
-            "Side Cost": comp["side_cost"],
-            "Front Cost": comp["front_cost"],
-            "Diagonal Cost": comp["diagonal_cost"],
-            "Neighbor Cost": comp["neighbor_cost"],
-            "Corner Cost": comp["corner_cost"],
-            "Preferred Side Cost": comp["preferred_side_cost"],
-            "Gender Cost": comp["gender_cost"],
-            "Empty Cost": comp["empty_cost"],
-            "Total Cost": comp["total_cost"]
-        })
-    indiv_df = pd.DataFrame(indiv_data)
-    st.dataframe(indiv_df, height=400)
-    
-    st.header("Seating Arrangements")
-    if hasattr(st.session_state, 'combined_df'):
-        st.download_button(
-            label="Download Arrangements",
-            data=st.session_state.combined_df.to_csv(index=False),
-            file_name="seating_arrangements.csv",
-            mime="text/csv"
-        )
-    else:
-        st.warning("Please run the optimization first to generate seating arrangements.")
-    for table_id in sorted(TABLES.keys()):
-        table_letter = TABLE_LETTERS[table_id]
-        df = seating_dataframe_for_table(st.session_state.best_assignments, table_id, table_letter)
-        st.subheader(f"Table {table_letter}")
-        st.dataframe(df, height=300)
-    
-    st.header("Overall Neighbour Summary")
-    data = []
-    for person, types_dict in st.session_state.neighbors_info.items():
-        data.append({
-            "Person": person,
-            "Gender": st.session_state.person_genders.get(person, "X"),
-            "Side Neighbours": ", ".join(sorted(types_dict["side"])),
-            "Front Neighbours": ", ".join(sorted(types_dict["front"])),
-            "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
-            "Corner Count": st.session_state.corner_count.get(person, 0)
-        })
-    nbr_df = pd.DataFrame(data)
-    st.dataframe(nbr_df, height=400)
 
-    st.header("Interactive Seat Highlighting (Aggregated by Name)")
+    with st.expander("Cost Breakdown"):
+    
+        st.header("Cost Over Iterations")
+        cost_hist_df = pd.DataFrame(st.session_state.cost_history)
+        cost_hist_df = cost_hist_df.set_index("iteration")
+        # Now using keys that exist in our breakdown dictionary:
+        st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost" ]])
+        
+        st.header("Individual Cost Breakdown")
+        indiv_data = []
+        for person, comp in st.session_state.indiv_costs.items():
+            indiv_data.append({
+                "Person": person,
+                "Side Cost": comp["side_cost"],
+                "Front Cost": comp["front_cost"],
+                "Diagonal Cost": comp["diagonal_cost"],
+                "Neighbor Cost": comp["neighbor_cost"],
+                "Corner Cost": comp["corner_cost"],
+                "Preferred Side Cost": comp["preferred_side_cost"],
+                "Gender Cost": comp["gender_cost"],
+                "Empty Cost": comp["empty_cost"],
+                "Total Cost": comp["total_cost"]
+            })
+        indiv_df = pd.DataFrame(indiv_data)
+        st.dataframe(indiv_df, height=400)
+    
+    with st.expander("Arrangements"):
+        if hasattr(st.session_state, 'combined_df'):
+            st.download_button(
+                label="Download Arrangements",
+                data=st.session_state.combined_df.to_csv(index=False),
+                file_name="seating_arrangements.csv",
+                mime="text/csv"
+            )
+        else:
+            st.warning("Please run the optimization first to generate seating arrangements.")
+        for table_id in sorted(TABLES.keys()):
+            table_letter = TABLE_LETTERS[table_id]
+            df = seating_dataframe_for_table(st.session_state.best_assignments, table_id, table_letter)
+            st.subheader(f"Table {table_letter}")
+            st.dataframe(df, height=300)
+    
+    with st.expander("Overall Neighbour Summary"):
+        data = []
+        for person, types_dict in st.session_state.neighbors_info.items():
+            data.append({
+                "Person": person,
+                "Gender": st.session_state.person_genders.get(person, "X"),
+                "Side Neighbours": ", ".join(sorted(types_dict["side"])),
+                "Front Neighbours": ", ".join(sorted(types_dict["front"])),
+                "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
+                "Corner Count": st.session_state.corner_count.get(person, 0)
+            })
+        nbr_df = pd.DataFrame(data)
+        st.dataframe(nbr_df, height=400)
+
+    st.header("Seat highlighting")
     if "best_assignments" in st.session_state and "neighbors_info" in st.session_state:
         # Let the user select a person.
         selected_person = st.selectbox(
