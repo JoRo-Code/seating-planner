@@ -718,26 +718,7 @@ def main():
     
     # Sidebar: Settings download/upload
     st.sidebar.markdown("# Settings")
-    if st.sidebar.button("Download Settings"):
-        settings = get_current_settings()
-        settings_json = json.dumps(settings, indent=2)
-        st.sidebar.write("Settings ready for download:")
-        st.sidebar.json(settings)
-        st.sidebar.download_button(
-            label="👉 Click here to download Settings JSON",
-            data=settings_json,
-            file_name="seatplan_settings.json",
-            mime="application/json",
-            key="settings_download"
-        )
-    uploaded_file = st.sidebar.file_uploader("Upload Settings", type=['json'])
-    if uploaded_file is not None:
-        try:
-            settings = json.load(uploaded_file)
-            st.session_state.uploaded_settings = settings
-            st.sidebar.success("Settings loaded successfully!")
-        except Exception as e:
-            st.sidebar.error(f"Error loading settings: {str(e)}")
+
     
     # Table Layout Configuration
     st.header("Table Layout Configuration")
@@ -769,148 +750,7 @@ def main():
             html = generate_table_html(table_id, table_letter, TABLES)
             components.html(html, height=180, scrolling=False)
     
-    # Guests
-    st.sidebar.header("Guests")
-    if "uploaded_settings" in st.session_state:
-        settings = st.session_state.uploaded_settings
-        male_text = st.sidebar.text_area("Males (one per line)", 
-                                         value=settings["male_names"], height=150,
-                                         key='male_text', help="One male name per line.")
-        female_text = st.sidebar.text_area("Females (one per line)", 
-                                           value=settings["female_names"], height=150,
-                                           key='female_text', help="One female name per line.")
-    else:
-        default_male = DEFAULT_MALE_NAMES
-        default_female = DEFAULT_FEMALE_NAMES
-        male_text = st.sidebar.text_area("Males (one per line)", value=default_male, height=150,
-                                         key='male_text', help="One male name per line.")
-        female_text = st.sidebar.text_area("Females (one per line)", value=default_female, height=150,
-                                           key='female_text', help="One female name per line.")
-    male_names = [name.strip() for name in male_text.splitlines() if name.strip()]
-    female_names = [name.strip() for name in female_text.splitlines() if name.strip()]
-    people = male_names + female_names
-    person_genders = {}
-    for name in male_names:
-        person_genders[name] = "M"
-    for name in female_names:
-        person_genders[name] = "F"
-    
-    # Fixed seat assignments
-    st.sidebar.header("Fixed Seat Assignments")
-    if "uploaded_settings" in st.session_state:
-        settings = st.session_state.uploaded_settings
-        fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
-                                          value=settings["fixed_assignments"], height=100,
-                                          key='fixed_text', help="Format: Name: Seat")
-    else:
-        fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
-                                          value="John: A2\nMary: B2", height=100,
-                                          key='fixed_text', help="Format: Name: Seat")
-    fixed_positions = parse_fixed_seats(fixed_text)
-    
-    # Preferred side neighbour preferences
-    st.sidebar.header("Preferred Side Neighbour Preferences")
-    pref_side_text = st.sidebar.text_area(
-        "Format: Person: Neighbour1, Neighbour2, ...", 
-        value=DEFAULT_PREFERRED_SIDE,  # Set default value here
-        height=100,
-        key='pref_side_text',
-        help="For example: Alice: Bob, Charlie"
-    )
-    preferred_side_preferences = parse_preferred_side_neighbours(pref_side_text)
-    
-    # Special Cost Multipliers
-    st.sidebar.header("Special Cost Multipliers")
-    st.sidebar.markdown("For guests whose cost you want to lower (or raise), enter one per line in the format: **Name: multiplier**. (A multiplier less than 1 lowers the cost.)")
-    special_cost_text = st.sidebar.text_area(
-        "Special Cost Multipliers", 
-        value=DEFAULT_SPECIAL_COSTS,  # Set default value here
-        height=100,
-        key='special_cost_multipliers_text',
-        help="Example: Alice: 0.5  (means Alice's penalty is halved)"
-    )
-    special_cost_multipliers = parse_special_cost_multipliers(special_cost_text)
-    
-    # Conditions & Weights
-    st.sidebar.header("Conditions")
-    st.sidebar.markdown("""
-        Set the importance of each condition. Higher values make the condition more important.
-    """)
-    if "uploaded_settings" in st.session_state:
-        settings = st.session_state.uploaded_settings
-        side_weight = st.sidebar.number_input("Side Neighbour", 
-                                              value=settings["weights"].get("side_neighbour_weight", DEFAULT_SIDE_WEIGHT),
-                                              step=1.0, format="%.1f",
-                                              key='side_weight',
-                                              help="Weight for repeated side neighbours.")
-        front_weight = st.sidebar.number_input("Front Neighbour", 
-                                               value=settings["weights"].get("front_neighbour_weight", DEFAULT_FRONT_WEIGHT),
-                                               step=1.0, format="%.1f",
-                                               key='front_weight',
-                                               help="Weight for repeated front neighbours.")
-        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", 
-                                                  value=settings["weights"].get("diagonal_neighbour_weight", DEFAULT_DIAGONAL_WEIGHT),
-                                                  step=1.0, format="%.1f",
-                                                  key='diagonal_weight',
-                                                  help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner", 
-                                                value=settings["weights"]["corner_weight"], 
-                                                step=0.1, format="%.1f",
-                                                key='corner_weight',
-                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125. Thus if two corners, the cost is 5+25=30.")
-        gender_weight = st.sidebar.number_input("Gender", 
-                                                value=settings["weights"]["gender_weight"], 
-                                                step=0.1, format="%.1f",
-                                                key='gender_weight',
-                                                help="Weight for adjacent same-gender seats.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", 
-                                               value=settings["weights"]["fixed_weight"], 
-                                               step=0.1, format="%.1f",
-                                               key='fixed_weight',
-                                               help="Extra weight for fixed-seat persons.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering", 
-                                               value=settings["weights"]["empty_weight"], 
-                                               step=0.1, format="%.1f",
-                                               key='empty_weight',
-                                               help="Weight for boundaries between empty and occupied seats.")
-        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", 
-                                                        value=settings["weights"].get("preferred_side_weight", DEFAULT_PREFERRED_SIDE_WEIGHT),
-                                                        step=0.1, format="%.1f",
-                                                        key='preferred_side_weight',
-                                                        help="Penalty weight if a preferred side neighbour is missing.")
-        uniformity_weight = st.sidebar.number_input("Uniformity", 
-                                                    value=settings["weights"].get("uniformity_weight", DEFAULT_UNIFORMITY_WEIGHT),
-                                                    step=0.1, format="%.1f",
-                                                    key='uniformity_weight',
-                                                    help="Extra penalty for uneven distribution of individual costs.")
-    else:
-        side_weight = st.sidebar.number_input("Side Neighbour", value=DEFAULT_SIDE_WEIGHT, step=1.0, format="%.1f",
-                                              key='side_weight',
-                                              help="Weight for repeated side neighbours.")
-        front_weight = st.sidebar.number_input("Front Neighbour", value=DEFAULT_FRONT_WEIGHT, step=1.0, format="%.1f",
-                                               key='front_weight',
-                                               help="Weight for repeated front neighbours.")
-        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", value=DEFAULT_DIAGONAL_WEIGHT, step=1.0, format="%.1f",
-                                                  key='diagonal_weight',
-                                                  help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner", value=DEFAULT_CORNER_WEIGHT, step=0.1, format="%.1f",
-                                                key='corner_weight',
-                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125. Thus if two corners, the cost is 5+25=30.")
-        gender_weight = st.sidebar.number_input("Gender", value=DEFAULT_GENDER_WEIGHT, step=0.1, format="%.1f",
-                                                key='gender_weight',
-                                                help="Weight for adjacent same-gender seats.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", value=DEFAULT_FIXED_WEIGHT, step=0.1, format="%.1f",
-                                               key='fixed_weight',
-                                               help="Extra weight for fixed-seat persons.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering", value=DEFAULT_EMPTY_WEIGHT, step=0.1, format="%.1f",
-                                               key='empty_weight',
-                                               help="Weight for boundaries between empty and occupied seats.")
-        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour", value=DEFAULT_PREFERRED_SIDE_WEIGHT, step=0.1, format="%.1f",
-                                                        key='preferred_side_weight',
-                                                        help="Penalty weight if a preferred side neighbour is missing.")
-        uniformity_weight = st.sidebar.number_input("Uniformity", value=DEFAULT_UNIFORMITY_WEIGHT, step=0.1, format="%.1f",
-                                                    key='uniformity_weight',
-                                                    help="Extra penalty for uneven distribution of individual costs.")
+    run_button = st.sidebar.button("Run Optimization", type="primary")
     
     with st.sidebar.expander("Optimization Parameters", expanded=False):
         if "uploaded_settings" in st.session_state:
@@ -950,7 +790,186 @@ def main():
                                          key='num_rounds',
                                          help="Number of seating arrangements to generate.")
     
-    run_button = st.sidebar.button("Run Optimization")
+    
+    # Guests
+    with st.sidebar.expander("Guests"):
+        st.markdown("""
+            Enter the names of the guests.
+        """)
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            male_text = st.text_area("Males (one per line)", 
+                                            value=settings["male_names"], height=150,
+                                            key='male_text', help="One male name per line.")
+            female_text = st.text_area("Females (one per line)", 
+                                            value=settings["female_names"], height=150,
+                                            key='female_text', help="One female name per line.")
+        else:
+            default_male = DEFAULT_MALE_NAMES
+            default_female = DEFAULT_FEMALE_NAMES
+            male_text = st.text_area("Males (one per line)", value=default_male, height=150,
+                                            key='male_text', help="One male name per line.")
+            female_text = st.text_area("Females (one per line)", value=default_female, height=150,
+                                            key='female_text', help="One female name per line.")
+        male_names = [name.strip() for name in male_text.splitlines() if name.strip()]
+        female_names = [name.strip() for name in female_text.splitlines() if name.strip()]
+        people = male_names + female_names
+        person_genders = {}
+        for name in male_names:
+            person_genders[name] = "M"
+        for name in female_names:
+            person_genders[name] = "F"
+    
+    # Fixed seat assignments
+    with st.sidebar.expander("Special Guest Preferences"):
+        st.markdown("""
+            Some guests may be treated differently.
+        """)
+        st.header("Fixed Seat Assignments")
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            fixed_text = st.text_area("", 
+                                            value=settings["fixed_assignments"], height=100,
+                                            key='fixed_text', help="These guests will have assigned seats (e.g., 'John: A12'))")
+        else:
+            fixed_text = st.text_area("",
+                                            value="John: A2\nMary: B2", height=100,
+                                            key='fixed_text', help="These guests will have assigned seats (e.g., 'John: A12')")
+        fixed_positions = parse_fixed_seats(fixed_text)
+        
+        # Preferred side neighbour preferences
+        st.header("Preferred Side Neighbours")
+        pref_side_text = st.text_area(
+            "", 
+            value=DEFAULT_PREFERRED_SIDE,  # Set default value here
+            height=100,
+            key='pref_side_text',
+            help="For example: Alice: Bob, Charlie. Meaning Alice prefers to sit next to Bob and Charlie. Each line is one person and their preferred neighbours."
+        )
+        preferred_side_preferences = parse_preferred_side_neighbours(pref_side_text)
+        
+        # Special Cost Multipliers
+        st.header("Special Cost Multipliers")
+        special_cost_text = st.text_area(
+            "Example: Alice: 0.5  (means Alice's penalty is halved)", 
+            value=DEFAULT_SPECIAL_COSTS,  # Set default value here
+            height=100,
+            key='special_cost_multipliers_text',
+            help="For guests whose cost you want to lower (or raise), enter one per line in the format: **Name: multiplier**. (A multiplier less than 1 lowers the cost.)"
+        )
+        special_cost_multipliers = parse_special_cost_multipliers(special_cost_text)
+        
+    # Conditions & Weights
+    with st.sidebar.expander("Conditions & Weights", expanded=False):
+        st.markdown("""
+            Set the importance of each condition. Higher values make the condition more important.
+        """)
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            side_weight = st.number_input("Side Neighbour", 
+                                          value=settings["weights"].get("side_neighbour_weight", DEFAULT_SIDE_WEIGHT),
+                                          step=1.0, format="%.1f",
+                                          key='side_weight',
+                                          help="Weight for repeated side neighbours.")
+            front_weight = st.number_input("Front Neighbour", 
+                                               value=settings["weights"].get("front_neighbour_weight", DEFAULT_FRONT_WEIGHT),
+                                               step=1.0, format="%.1f",
+                                               key='front_weight',
+                                               help="Weight for repeated front neighbours.")
+            diagonal_weight = st.number_input("Diagonal Neighbour", 
+                                                  value=settings["weights"].get("diagonal_neighbour_weight", DEFAULT_DIAGONAL_WEIGHT),
+                                                  step=1.0, format="%.1f",
+                                                  key='diagonal_weight',
+                                                  help="Weight for repeated diagonal neighbours.")
+            corner_weight = st.number_input("Corner", 
+                                                value=settings["weights"]["corner_weight"], 
+                                                step=0.1, format="%.1f",
+                                                key='corner_weight',
+                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125. Thus if two corners, the cost is 5+25=30.")
+            gender_weight = st.number_input("Gender", 
+                                                value=settings["weights"]["gender_weight"], 
+                                                step=0.1, format="%.1f",
+                                                key='gender_weight',
+                                                help="Weight for adjacent same-gender seats.")
+            fixed_weight = st.number_input("Fixed Seat Diversity", 
+                                               value=settings["weights"]["fixed_weight"], 
+                                               step=0.1, format="%.1f",
+                                               key='fixed_weight',
+                                               help="Extra weight for fixed-seat persons.")
+            empty_weight = st.number_input("Empty Seat Clustering", 
+                                               value=settings["weights"]["empty_weight"], 
+                                               step=0.1, format="%.1f",
+                                               key='empty_weight',
+                                               help="Weight for boundaries between empty and occupied seats.")
+            preferred_side_weight = st.number_input("Preferred Side Neighbour", 
+                                                        value=settings["weights"].get("preferred_side_weight", DEFAULT_PREFERRED_SIDE_WEIGHT),
+                                                        step=0.1, format="%.1f",
+                                                        key='preferred_side_weight',
+                                                        help="Penalty weight if a preferred side neighbour is missing.")
+            uniformity_weight = st.number_input("Uniformity", 
+                                                value=settings["weights"].get("uniformity_weight", DEFAULT_UNIFORMITY_WEIGHT),
+                                                step=0.1, format="%.1f",
+                                                key='uniformity_weight',
+                                                help="Extra penalty for uneven distribution of individual costs.")
+        else:
+            side_weight = st.number_input("Side Neighbour", value=DEFAULT_SIDE_WEIGHT, step=1.0, format="%.1f",
+                                          key='side_weight',
+                                          help="Weight for repeated side neighbours.")
+            front_weight = st.number_input("Front Neighbour", value=DEFAULT_FRONT_WEIGHT, step=1.0, format="%.1f",
+                                               key='front_weight',
+                                               help="Weight for repeated front neighbours.")
+            diagonal_weight = st.number_input("Diagonal Neighbour", value=DEFAULT_DIAGONAL_WEIGHT, step=1.0, format="%.1f",
+                                                  key='diagonal_weight',
+                                                  help="Weight for repeated diagonal neighbours.")
+            corner_weight = st.number_input("Corner", value=DEFAULT_CORNER_WEIGHT, step=0.1, format="%.1f",
+                                                key='corner_weight',
+                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125. Thus if two corners, the cost is 5+25=30.")
+            gender_weight = st.number_input("Gender", value=DEFAULT_GENDER_WEIGHT, step=0.1, format="%.1f",
+                                                key='gender_weight',
+                                                help="Weight for adjacent same-gender seats.")
+            fixed_weight = st.number_input("Fixed Seat Diversity", value=DEFAULT_FIXED_WEIGHT, step=0.1, format="%.1f",
+                                               key='fixed_weight',
+                                               help="Extra weight for fixed-seat persons.")
+            empty_weight = st.number_input("Empty Seat Clustering", value=DEFAULT_EMPTY_WEIGHT, step=0.1, format="%.1f",
+                                               key='empty_weight',
+                                               help="Weight for boundaries between empty and occupied seats.")
+            preferred_side_weight = st.number_input("Preferred Side Neighbour", value=DEFAULT_PREFERRED_SIDE_WEIGHT, step=0.1, format="%.1f",
+                                                        key='preferred_side_weight',
+                                                        help="Penalty weight if a preferred side neighbour is missing.")
+            uniformity_weight = st.number_input("Uniformity", value=DEFAULT_UNIFORMITY_WEIGHT, step=0.1, format="%.1f",
+                                                key='uniformity_weight',
+                                                help="Extra penalty for uneven distribution of individual costs.")
+    
+    st.sidebar.markdown("## Import/Export")
+    uploaded_file = st.sidebar.file_uploader("Import Settings", type=['json'])
+    if uploaded_file is not None:
+        try:
+            settings = json.load(uploaded_file)
+            st.session_state.uploaded_settings = settings
+            st.sidebar.success("Settings loaded successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Error loading settings: {str(e)}")
+    
+    if "show_export" not in st.session_state:
+        st.session_state.show_export = False
+
+    if st.sidebar.button("Export"):
+        st.session_state.show_export = not st.session_state.show_export
+
+    if st.session_state.show_export:
+        settings = get_current_settings()
+        settings_json = json.dumps(settings, indent=2)
+        st.sidebar.download_button(
+            label="👉 Click here to download Settings JSON",
+            data=settings_json,
+            file_name="seatplan_settings.json",
+            mime="application/json",
+            key="settings_download"
+        )
+        st.sidebar.write("Settings ready for download:")
+        st.sidebar.json(settings)
+
+    
     
     if run_button or "best_assignments" not in st.session_state:
         with st.spinner("Running optimization..."):
