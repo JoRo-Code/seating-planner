@@ -776,49 +776,113 @@ def generate_table_html_with_highlights(arrangement, table_id, table_letter, tab
     """
     return full_html
 
-def display_highlighted_arrangements(selected_person, best_assignments, tables, table_letters, seat_neighbors):
+def display_highlighted_arrangements_by_names(selected_person, best_assignments, tables, table_letters, aggregated_neighbors):
     """
-    For each arrangement and for each table:
-      - If the selected_person is seated at that table, determine its seat.
-      - Build a dictionary (highlights) that maps:
-            * The selected seat → "selected"
-            * Its side neighbours → "side"
-            * Its front and diagonal neighbours → "other"
-      - Then display the table using generate_table_html_with_highlights.
+    Displays each seating arrangement by highlighting seats based on occupant names.
+    
+    Parameters:
+      - selected_person: the name of the person selected.
+      - best_assignments: a list of seating arrangements (one per round).
+      - tables, table_letters: your table configuration.
+      - aggregated_neighbors: a dict with keys "side", "front", "diagonal" containing the aggregated neighbor names
+          for the selected person (from your neighbor summary).
+          
+    For each arrangement, a seat is highlighted:
+      - "selected" (gold) if the occupant is the selected person.
+      - "side" (light green) if the occupant’s name is in aggregated_neighbors["side"].
+      - "other" (light blue) if the occupant’s name is in aggregated_neighbors["front"] ∪ aggregated_neighbors["diagonal"].
     """
-    st.header(f"Highlighted Arrangements for **{selected_person}**")
+    # --- Display a Legend ---
+    st.markdown("""
+    **Legend:**  
+    <span style="background-color: #FFD700; padding: 4px 8px; border: 1px solid #000; margin-right: 8px;">Selected Person</span>  
+    <span style="background-color: #90EE90; padding: 4px 8px; border: 1px solid #000; margin-right: 8px;">Immediate (Side) Neighbour</span>  
+    <span style="background-color: #ADD8E6; padding: 4px 8px; border: 1px solid #000;">Front/Diagonal Neighbour</span>
+    """, unsafe_allow_html=True)
+    
+    st.header(f"Aggregated Highlights for **{selected_person}**")
+    
+    # Combine front and diagonal into a single set for "other" neighbors.
+    other_neighbors = aggregated_neighbors.get("front", set()) | aggregated_neighbors.get("diagonal", set())
+    
+    # Loop over each arrangement.
     for round_index, arrangement in enumerate(best_assignments):
         st.subheader(f"Arrangement {round_index+1}")
         for table_id in sorted(tables.keys()):
             table_letter = table_letters[table_id]
-            # Look for the selected_person on this table.
-            seat_found = None
-            for seat, occupant in arrangement.items():
-                if seat[0] == table_id and occupant == selected_person:
-                    seat_found = seat
-                    break
-            if seat_found is None:
-                st.markdown(f"**Table {table_letter}** (No {selected_person})")
-                # Show the table without any highlights.
-                empty_highlights = {}
-                html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, empty_highlights)
-                components.html(html, height=180, scrolling=False)
-            else:
-                # Build the highlights for the selected person’s seat.
-                highlights = {}
-                highlights[seat_found] = "selected"
-                # Immediate (side) neighbours:
-                for nbr in seat_neighbors[seat_found]["side"]:
-                    highlights[nbr] = "side"
-                # Other neighbours: front and diagonal.
-                for nbr in seat_neighbors[seat_found]["front"] + seat_neighbors[seat_found]["diagonal"]:
-                    # Only mark if not already set (in case you want side to take precedence).
-                    if nbr not in highlights:
-                        highlights[nbr] = "other"
-                st.markdown(f"**Table {table_letter}** (with {selected_person})")
-                html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights)
-                components.html(html, height=180, scrolling=False)
-                
+            highlights = {}
+            # List all seats for this table.
+            seats_in_table = [(table_id, row, col) for row in [0, 1] for col in range(tables[table_id])]
+            for seat in seats_in_table:
+                occupant = arrangement.get(seat, "")
+                if occupant == selected_person:
+                    highlights[seat] = "selected"
+                elif occupant in aggregated_neighbors.get("side", set()):
+                    highlights[seat] = "side"
+                elif occupant in other_neighbors:
+                    highlights[seat] = "other"
+            st.markdown(f"**Table {table_letter}**")
+            html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights)
+            components.html(html, height=180, scrolling=False)
+
+
+def display_highlighted_arrangements(selected_person, best_assignments, tables, table_letters, seat_neighbors):
+    """
+    For the selected_person, aggregates neighbor information from all arrangements,
+    then displays each seating arrangement with:
+      - All seats where the person sat (in any arrangement) highlighted as "selected"
+      - Any seat that was an immediate (side) neighbor in any round highlighted as "side"
+      - Any seat that was a front or diagonal neighbor in any round highlighted as "other"
+    Also displays a legend for the color codes.
+    """
+    # --- Aggregate the neighbor info across all arrangements ---
+    global_selected_seats = set()
+    global_side_neighbors = set()
+    global_other_neighbors = set()
+    
+    for arrangement in best_assignments:
+        for seat, occupant in arrangement.items():
+            if occupant == selected_person:
+                global_selected_seats.add(seat)
+                # Add immediate (side) neighbors:
+                for nbr in seat_neighbors[seat]["side"]:
+                    global_side_neighbors.add(nbr)
+                # Add front and diagonal neighbors:
+                for nbr in seat_neighbors[seat]["front"] + seat_neighbors[seat]["diagonal"]:
+                    global_other_neighbors.add(nbr)
+    
+    # Remove any overlap: a seat that is in global_selected_seats should not also be in neighbor sets.
+    global_side_neighbors -= global_selected_seats
+    global_other_neighbors -= (global_selected_seats | global_side_neighbors)
+    
+    # --- Display a Legend ---
+    st.markdown("""
+    **Legend:**  
+    <span style="background-color: #FFD700; padding: 4px 8px; border: 1px solid #000; margin-right: 8px;">Selected Person<br>(where they sat in any arrangement)</span>  
+    <span style="background-color: #90EE90; padding: 4px 8px; border: 1px solid #000; margin-right: 8px;">Immediate (Side) Neighbour<br>(aggregated)</span>  
+    <span style="background-color: #ADD8E6; padding: 4px 8px; border: 1px solid #000;">Front/Diagonal Neighbour<br>(aggregated)</span>
+    """, unsafe_allow_html=True)
+    
+    st.header(f"Aggregated Highlights for **{selected_person}**")
+    
+    # --- Loop over each arrangement ---
+    for round_index, arrangement in enumerate(best_assignments):
+        st.subheader(f"Arrangement {round_index+1}")
+        for table_id in sorted(tables.keys()):
+            table_letter = table_letters[table_id]
+            highlights = {}
+            # List all seats in this table.
+            seats_in_table = [(table_id, row, col) for row in [0, 1] for col in range(tables[table_id])]
+            for seat in seats_in_table:
+                if seat in global_selected_seats:
+                    highlights[seat] = "selected"
+                elif seat in global_side_neighbors:
+                    highlights[seat] = "side"
+                elif seat in global_other_neighbors:
+                    highlights[seat] = "other"
+            st.markdown(f"**Table {table_letter}**")
+            html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights)
+            components.html(html, height=180, scrolling=False)
 
 
 def main():
@@ -1176,21 +1240,20 @@ def main():
     nbr_df = pd.DataFrame(data)
     st.dataframe(nbr_df, height=400)
 
-        # --- Interactive Seat Highlighting Section ---
-    st.header("Interactive Seat Highlighting")
-
-    # Ensure that best_assignments and person_genders are in session_state.
-    if "best_assignments" in st.session_state and "person_genders" in st.session_state:
-        # Create a select box to choose a person.
+    st.header("Interactive Seat Highlighting (Aggregated by Name)")
+    if "best_assignments" in st.session_state and "neighbors_info" in st.session_state:
+        # Let the user select a person.
         selected_person = st.selectbox(
-            "Select a person to highlight their seat and neighbours:",
+            "Select a person to highlight their seat and aggregated neighbours:",
             list(st.session_state.person_genders.keys())
         )
-        # (Re)compute seat neighbours from TABLES (which is already defined).
-        seat_neighbors = compute_seat_neighbors(TABLES)
-        # Display the highlighted seating arrangements.
-        display_highlighted_arrangements(selected_person, st.session_state.best_assignments,
-                                        TABLES, TABLE_LETTERS, seat_neighbors)
+        # Use the aggregated neighbor summary (neighbors_info) for that person.
+        if selected_person in st.session_state.neighbors_info:
+            aggregated_neighbors = st.session_state.neighbors_info[selected_person]
+        else:
+            aggregated_neighbors = {"side": set(), "front": set(), "diagonal": set()}
+        display_highlighted_arrangements_by_names(selected_person, st.session_state.best_assignments,
+                                                TABLES, TABLE_LETTERS, aggregated_neighbors)
     else:
         st.info("Run the optimization first to generate seating arrangements.")
 
