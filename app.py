@@ -260,6 +260,170 @@ def get_neighbors_info_by_type(assignments, seat_neighbors, tables):
 # 4. Optimization Functions          #
 #####################################
 
+def initialize_assignments_alternating(people, person_genders, tables, fixed_positions, num_rounds=3):
+    """
+    Creates initial seating assignments that try to alternate genders on every table row.
+    It respects fixed seat assignments and, if available, uses free male and female lists.
+    """
+    seats = generate_seats(tables)
+    assignments = []
+    # Determine free persons for each gender after fixed assignments
+    fixed_names = set(fixed_positions.keys())
+    free_males = [p for p in people if person_genders.get(p) == "M" and p not in fixed_names]
+    free_females = [p for p in people if person_genders.get(p) == "F" and p not in fixed_names]
+    # Also maintain a combined list in case numbers are unbalanced
+    free_all = [p for p in people if p not in fixed_names]
+
+    for _ in range(num_rounds):
+        round_assignment = {}
+        # First, assign the fixed seats
+        for person, seat in fixed_positions.items():
+            round_assignment[seat] = person
+
+        # Determine the free seats
+        free_seats = [s for s in seats if s not in round_assignment]
+        # Group free seats by table and row
+        seats_by_table_row = {}
+        for seat in free_seats:
+            t, row, col = seat
+            seats_by_table_row.setdefault((t, row), []).append(seat)
+
+        # For each group (i.e. each row on a table), sort by column and assign alternating genders
+        for (t, row), seat_list in seats_by_table_row.items():
+            seat_list.sort(key=lambda s: s[2])
+            for i, seat in enumerate(seat_list):
+                # For even positions, try to assign a male; for odd, a female.
+                if i % 2 == 0:
+                    if free_males:
+                        person = free_males.pop(0)
+                    elif free_all:
+                        person = free_all.pop(0)
+                    else:
+                        person = "Empty"
+                else:
+                    if free_females:
+                        person = free_females.pop(0)
+                    elif free_all:
+                        person = free_all.pop(0)
+                    else:
+                        person = "Empty"
+                round_assignment[seat] = person
+
+        # If any free persons remain (because the count wasn’t exactly equal) assign them arbitrarily.
+        remaining_seats = [s for s in free_seats if s not in round_assignment]
+        for seat in remaining_seats:
+            if free_all:
+                round_assignment[seat] = free_all.pop(0)
+            else:
+                round_assignment[seat] = "Empty"
+        assignments.append(round_assignment)
+    return assignments
+
+def initialize_assignments_alternating(people, person_genders, tables, fixed_positions, num_rounds=3):
+    """
+    Creates initial seating assignments that try to alternate genders on every table row,
+    while taking into account fixed positions. It assumes the fixed positions already
+    follow an alternating pattern so that an alternating arrangement is possible.
+    
+    Parameters:
+      - people: list of all guest names.
+      - person_genders: dict mapping name -> "M" or "F".
+      - tables: dict mapping table ID -> seats per side.
+      - fixed_positions: dict mapping guest name -> seat (tuple, e.g. (table, row, col)).
+      - num_rounds: number of seating arrangements (rounds) to generate.
+      
+    Returns:
+      - assignments: list (length num_rounds) of dicts mapping seat -> person.
+    """
+    # Generate all seat coordinates
+    seats = generate_seats(tables)
+    assignments = []
+    
+    # Build a mapping from seat -> fixed person (for easier lookup)
+    fixed_seat_assignments = {seat: person for person, seat in fixed_positions.items()}
+    fixed_names = set(fixed_positions.keys())
+    
+    for _ in range(num_rounds):
+        round_assignment = {}
+        # First, assign fixed positions
+        round_assignment.update(fixed_seat_assignments)
+        
+        # Group free seats by (table, row)
+        free_seats = [s for s in seats if s not in round_assignment]
+        seats_by_table_row = {}
+        for seat in free_seats:
+            t, row, col = seat
+            seats_by_table_row.setdefault((t, row), []).append(seat)
+        
+        # Create working lists for free persons of each gender
+        free_males = [p for p in people if person_genders.get(p) == "M" and p not in fixed_names]
+        free_females = [p for p in people if person_genders.get(p) == "F" and p not in fixed_names]
+        # Also maintain a combined free list for fallback
+        free_all = [p for p in people if p not in fixed_names]
+        
+        # Process each table row
+        for (t, row), seat_list in seats_by_table_row.items():
+            # Sort the seats by column order
+            seat_list.sort(key=lambda s: s[2])
+            
+            # Check if any fixed seat exists in this table row.
+            # We'll build a list of (seat, fixed_person) for seats in this table and row.
+            fixed_in_row = [(seat, fixed_seat_assignments[seat]) 
+                            for seat in fixed_seat_assignments if seat[0] == t and seat[1] == row]
+            
+            if fixed_in_row:
+                # Use the leftmost fixed seat as the reference.
+                fixed_in_row.sort(key=lambda x: x[0][2])  # sort by column
+                ref_seat, ref_person = fixed_in_row[0]
+                ref_col = ref_seat[2]
+                ref_gender = person_genders.get(ref_person, "X")
+                def desired_gender(seat):
+                    _, _, col = seat
+                    # If col differs from the reference by an even number, use the same gender
+                    if (col - ref_col) % 2 == 0:
+                        return ref_gender
+                    else:
+                        return "F" if ref_gender == "M" else "M"
+            # If there is no fixed seat in the row, use a default alternating pattern.
+            # (Here we assign based on the order in the sorted list: even-index = "M", odd-index = "F".)
+            
+            for idx, seat in enumerate(seat_list):
+                if fixed_in_row:
+                    d_gender = desired_gender(seat)
+                else:
+                    d_gender = "M" if idx % 2 == 0 else "F"
+                    
+                # Attempt to assign a free person of the desired gender.
+                if d_gender == "M" and free_males:
+                    person = free_males.pop(0)
+                    if person in free_all:
+                        free_all.remove(person)
+                elif d_gender == "F" and free_females:
+                    person = free_females.pop(0)
+                    if person in free_all:
+                        free_all.remove(person)
+                else:
+                    # Fallback: assign from any free person
+                    if free_all:
+                        person = free_all.pop(0)
+                        if person in free_males:
+                            free_males.remove(person)
+                        if person in free_females:
+                            free_females.remove(person)
+                    else:
+                        person = "Empty"
+                round_assignment[seat] = person
+        
+        # (For safety, assign any seats not yet assigned—should not happen if all seats were processed.)
+        for seat in seats:
+            if seat not in round_assignment:
+                round_assignment[seat] = free_all.pop(0) if free_all else "Empty"
+                    
+        assignments.append(round_assignment)
+    return assignments
+
+
+
 def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
     seats = generate_seats(tables)
     #free_people = set(people)
@@ -474,8 +638,22 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                     if g1 == "X" or g2 == "X":
                         continue
                     if g1 == g2:
-                        indiv_breakdown[p1]["gender_cost"] += gender_weight / 2
-                        indiv_breakdown[p2]["gender_cost"] += gender_weight / 2
+                        indiv_breakdown[p1]["gender_cost"] += gender_weight 
+                        indiv_breakdown[p2]["gender_cost"] += gender_weight
+    
+    # Additional penalty for front neighbors (vertical pairing)
+    # In a 2-row table, the “front” neighbor is the seat in the opposite row with the same column.
+    for round_assign in assignments:
+        for t, seats_per_side in tables.items():
+            for col in range(seats_per_side):
+                s0 = (t, 0, col)
+                s1 = (t, 1, col)
+                if s0 in round_assign and s1 in round_assign:
+                    p0, p1 = round_assign[s0], round_assign[s1]
+                    g0, g1 = person_genders.get(p0, "X"), person_genders.get(p1, "X")
+                    if g0 != "X" and g1 != "X" and g0 == g1:
+                        indiv_breakdown[p0]["gender_cost"] += gender_weight
+                        indiv_breakdown[p1]["gender_cost"] += gender_weight
 
     # Empty cost: for each adjacent pair where one is empty and one is not, assign cost to the non-empty person.
     for round_assign in assignments:
@@ -491,6 +669,8 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                         indiv_breakdown[p2]["empty_cost"] += empty_weight
                     elif p2.startswith("Empty") and not p1.startswith("Empty"):
                         indiv_breakdown[p1]["empty_cost"] += empty_weight
+
+
 
     # Total cost per person.
     for person, comp in indiv_breakdown.items():
@@ -640,7 +820,7 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     elif len(people) > total_seats:
         people = people[:total_seats]
     seat_neighbors = compute_seat_neighbors(tables)
-    assignments = initialize_assignments(people, tables, fixed_positions, num_rounds=num_rounds)
+    assignments = initialize_assignments_alternating(people, person_genders=person_genders, tables=tables, fixed_positions=fixed_positions, num_rounds=num_rounds)
     best_assignments, best_cost, cost_history = optimize_assignments(
         assignments, seat_neighbors, tables, fixed_positions, person_genders,
         iterations, initial_temp, cooling_rate,
