@@ -1037,12 +1037,15 @@ def main():
     st.dataframe(indiv_df, height=400)
     
     st.header("Seating Arrangements")
-    st.download_button(
-        label="Download All Seating Arrangements",
-        data=st.session_state.combined_df.to_csv(index=False),
-        file_name="seating_arrangements.csv",
-        mime="text/csv"
-    )
+    if hasattr(st.session_state, 'combined_df'):
+        st.download_button(
+            label="Download Arrangements",
+            data=st.session_state.combined_df.to_csv(index=False),
+            file_name="seating_arrangements.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("Please run the optimization first to generate seating arrangements.")
     for table_id in sorted(TABLES.keys()):
         table_letter = TABLE_LETTERS[table_id]
         df = seating_dataframe_for_table(st.session_state.best_assignments, table_id, table_letter)
