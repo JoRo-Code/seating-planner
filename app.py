@@ -250,9 +250,11 @@ def get_neighbors_info_by_type(assignments, seat_neighbors, tables):
                 corner_count[person] += 1
             for n_type, neighbor_list in seat_neighbors[seat].items():
                 for n_seat in neighbor_list:
-                    neighbor_person = round_assign[n_seat]
-                    person_neighbors[person][n_type].add(neighbor_person)
+                    if n_seat in round_assign:
+                        neighbor_person = round_assign[n_seat]
+                        person_neighbors[person][n_type].add(neighbor_person)
     return person_neighbors, corner_count
+
 
 #####################################
 # 4. Optimization Functions          #
@@ -260,9 +262,11 @@ def get_neighbors_info_by_type(assignments, seat_neighbors, tables):
 
 def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
     seats = generate_seats(tables)
-    free_people = set(people)
+    #free_people = set(people)
+    free_people = list(people)
     for person in fixed_positions:
-        free_people.discard(person)
+            if person in free_people:       
+                free_people.remove(person)
     free_people = list(free_people)
     assignments = []
     for _ in range(num_rounds):
@@ -404,7 +408,9 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
         for seat, person in round_assign.items():
             for n_type, n_list in seat_neighbors[seat].items():
                 for n_seat in n_list:
-                    indiv_neighbors[person][n_type].append(round_assign[n_seat])
+                    # Add check for valid neighbor seat
+                    if n_seat in round_assign:
+                        indiv_neighbors[person][n_type].append(round_assign[n_seat])
     for person, nbrs in indiv_neighbors.items():
         if person_genders.get(person, "X") == "X":
             continue
@@ -445,7 +451,9 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
         for round_assign in assignments:
             for seat, seated_person in round_assign.items():
                 if seated_person == person:
-                    side_nbrs = set(round_assign[n_seat] for n_seat in seat_neighbors[seat]["side"])
+                    # Only consider valid neighbor seats that exist in the assignment
+                    valid_neighbors = [n_seat for n_seat in seat_neighbors[seat]["side"] if n_seat in round_assign]
+                    side_nbrs = set(round_assign[n_seat] for n_seat in valid_neighbors)
                     found_neighbors.update(desired & side_nbrs)
         # Count how many desired neighbors were never found as side neighbors
         missing = len(desired - found_neighbors)
@@ -453,9 +461,11 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
 
     # Gender cost: for each adjacent same-gender pair, attribute half cost to each person.
     for round_assign in assignments:
+        valid_seats = set(round_assign.keys())  # Only consider seats that exist in this round
         for t, seats_per_side in tables.items():
             for row in [0, 1]:
                 seats_in_row = [(t, row, col) for col in range(seats_per_side)]
+                seats_in_row = [s for s in seats_in_row if s in valid_seats]  # Filter to valid seats
                 for i in range(len(seats_in_row) - 1):
                     s1, s2 = seats_in_row[i], seats_in_row[i+1]
                     p1, p2 = round_assign[s1], round_assign[s2]
@@ -466,14 +476,17 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                     if g1 == g2:
                         indiv_breakdown[p1]["gender_cost"] += gender_weight / 2
                         indiv_breakdown[p2]["gender_cost"] += gender_weight / 2
+
     # Empty cost: for each adjacent pair where one is empty and one is not, assign cost to the non-empty person.
     for round_assign in assignments:
+        valid_seats = set(round_assign.keys())  # Only consider seats that exist in this round
         for t, seats_per_side in tables.items():
             for row in [0, 1]:
                 seats_in_row = [(t, row, col) for col in range(seats_per_side)]
+                seats_in_row = [s for s in seats_in_row if s in valid_seats]  # Filter to valid seats
                 for i in range(len(seats_in_row) - 1):
-                    p1 = round_assign[seats_in_row[i]]
-                    p2 = round_assign[seats_in_row[i+1]]
+                    s1, s2 = seats_in_row[i], seats_in_row[i+1]
+                    p1, p2 = round_assign[s1], round_assign[s2]
                     if p1.startswith("Empty") and not p2.startswith("Empty"):
                         indiv_breakdown[p2]["empty_cost"] += empty_weight
                     elif p2.startswith("Empty") and not p1.startswith("Empty"):
