@@ -710,6 +710,116 @@ def get_current_settings():
             "uniformity_weight": uniformity_weight
         }
     }
+    
+def generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights):
+    """
+    Generates an HTML representation of one table for one seating arrangement.
+    - arrangement: a dict mapping seat (table, row, col) to occupant name.
+    - highlights: a dict mapping seat tuples to a highlight category:
+         "selected" for the chosen person,
+         "side" for immediate (side) neighbours,
+         "other" for front and diagonal neighbours.
+    """
+    num_cols = tables[table_id]
+    # Define common cell style and highlight colors.
+    cell_style = (
+        "width:60px; height:60px; border:1px solid #000; display:flex; "
+        "align-items:center; justify-content:center; margin:2px; font-size:12px; font-weight:bold;"
+    )
+    highlight_colors = {
+        "selected": "#FFD700",  # gold
+        "side": "#90EE90",      # light green
+        "other": "#ADD8E6"      # light blue
+    }
+    def get_bg_color(row, col):
+        seat = (table_id, row, col)
+        if seat in highlights:
+            return highlight_colors.get(highlights[seat], "#ffffff")
+        else:
+            # Use default colors: corner seats get a light red background.
+            if col == 0 or col == num_cols - 1:
+                return "#ffcccc"
+            else:
+                return "#ffffff"
+    
+    # Build the two rows (top row: row 0, bottom row: row 1).
+    top_html = "<div style='display:flex; justify-content:center;'>"
+    for col in range(num_cols):
+        seat = (table_id, 0, col)
+        occupant = arrangement.get(seat, "")
+        bg_color = get_bg_color(0, col)
+        top_html += f"<div style='{cell_style} background-color:{bg_color};'>{occupant}</div>"
+    top_html += "</div>"
+    
+    bottom_html = "<div style='display:flex; justify-content:center;'>"
+    for col in range(num_cols):
+        seat = (table_id, 1, col)
+        occupant = arrangement.get(seat, "")
+        bg_color = get_bg_color(1, col)
+        bottom_html += f"<div style='{cell_style} background-color:{bg_color};'>{occupant}</div>"
+    bottom_html += "</div>"
+    
+    full_html = f"""
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body {{ font-family: sans-serif; margin:10px; padding:0; }}
+        </style>
+      </head>
+      <body>
+        <h4 style="text-align:center;">Table {table_letter}</h4>
+        {top_html}
+        {bottom_html}
+      </body>
+    </html>
+    """
+    return full_html
+
+def display_highlighted_arrangements(selected_person, best_assignments, tables, table_letters, seat_neighbors):
+    """
+    For each arrangement and for each table:
+      - If the selected_person is seated at that table, determine its seat.
+      - Build a dictionary (highlights) that maps:
+            * The selected seat → "selected"
+            * Its side neighbours → "side"
+            * Its front and diagonal neighbours → "other"
+      - Then display the table using generate_table_html_with_highlights.
+    """
+    st.header(f"Highlighted Arrangements for **{selected_person}**")
+    for round_index, arrangement in enumerate(best_assignments):
+        st.subheader(f"Arrangement {round_index+1}")
+        for table_id in sorted(tables.keys()):
+            table_letter = table_letters[table_id]
+            # Look for the selected_person on this table.
+            seat_found = None
+            for seat, occupant in arrangement.items():
+                if seat[0] == table_id and occupant == selected_person:
+                    seat_found = seat
+                    break
+            if seat_found is None:
+                st.markdown(f"**Table {table_letter}** (No {selected_person})")
+                # Show the table without any highlights.
+                empty_highlights = {}
+                html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, empty_highlights)
+                components.html(html, height=180, scrolling=False)
+            else:
+                # Build the highlights for the selected person’s seat.
+                highlights = {}
+                highlights[seat_found] = "selected"
+                # Immediate (side) neighbours:
+                for nbr in seat_neighbors[seat_found]["side"]:
+                    highlights[nbr] = "side"
+                # Other neighbours: front and diagonal.
+                for nbr in seat_neighbors[seat_found]["front"] + seat_neighbors[seat_found]["diagonal"]:
+                    # Only mark if not already set (in case you want side to take precedence).
+                    if nbr not in highlights:
+                        highlights[nbr] = "other"
+                st.markdown(f"**Table {table_letter}** (with {selected_person})")
+                html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights)
+                components.html(html, height=180, scrolling=False)
+                
+
 
 def main():
     st.title("SeatPlan")
@@ -1065,6 +1175,24 @@ def main():
         })
     nbr_df = pd.DataFrame(data)
     st.dataframe(nbr_df, height=400)
+
+        # --- Interactive Seat Highlighting Section ---
+    st.header("Interactive Seat Highlighting")
+
+    # Ensure that best_assignments and person_genders are in session_state.
+    if "best_assignments" in st.session_state and "person_genders" in st.session_state:
+        # Create a select box to choose a person.
+        selected_person = st.selectbox(
+            "Select a person to highlight their seat and neighbours:",
+            list(st.session_state.person_genders.keys())
+        )
+        # (Re)compute seat neighbours from TABLES (which is already defined).
+        seat_neighbors = compute_seat_neighbors(TABLES)
+        # Display the highlighted seating arrangements.
+        display_highlighted_arrangements(selected_person, st.session_state.best_assignments,
+                                        TABLES, TABLE_LETTERS, seat_neighbors)
+    else:
+        st.info("Run the optimization first to generate seating arrangements.")
 
 if __name__ == "__main__":
     if "__streamlitmagic__" not in locals():
