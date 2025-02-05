@@ -798,7 +798,7 @@ def main():
     st.sidebar.header("Preferred Side Neighbour Preferences")
     pref_side_text = st.sidebar.text_area(
         "Format: Person: Neighbour1, Neighbour2, ...", 
-        value="John: Linda, Karen",  # Set default value here
+        value=DEFAULT_PREFERRED_SIDE,  # Set default value here
         height=100,
         key='pref_side_text',
         help="For example: Alice: Bob, Charlie"
@@ -810,7 +810,7 @@ def main():
     st.sidebar.markdown("For guests whose cost you want to lower (or raise), enter one per line in the format: **Name: multiplier**. (A multiplier less than 1 lowers the cost.)")
     special_cost_text = st.sidebar.text_area(
         "Special Cost Multipliers", 
-        value="John: 10",  # Set default value here
+        value=DEFAULT_SPECIAL_COSTS,  # Set default value here
         height=100,
         key='special_cost_multipliers_text',
         help="Example: Alice: 0.5  (means Alice's penalty is halved)"
