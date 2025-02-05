@@ -518,6 +518,12 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     flip_probability = 0.2  # 20% chance; adjust as desired
 
     for iter_num in range(1, iterations + 1):
+        # min cost is corner_weight * number of corners. TODO: Special case with multipliers, 
+
+        # total corners. number of tables * 4 * rounds
+        total_corners = len(tables) * 4 * num_rounds
+        if current_cost == corner_weight * total_corners:
+            break
         # Decide whether to try a flip move or the usual swap move.
         if random.random() < flip_probability:
             # ------------------ FLIP MOVE ------------------
