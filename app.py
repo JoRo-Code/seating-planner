@@ -9,10 +9,61 @@ from collections import defaultdict
 import json
 
 #####################################
-# 1. Table Definitions & Utilities  #
+# 0. Default Values                 #
 #####################################
 
+# Table Defaults
 DEFAULT_TABLE_DEF = "A: 3\nB: 3\nC: 4"
+
+# Guest List Defaults
+DEFAULT_MALE_NAMES = """John
+Mike
+David
+Steve
+Robert
+James
+William
+Richard
+Jonas
+Thomas"""
+
+DEFAULT_FEMALE_NAMES = """Mary
+Linda
+Susan
+Karen
+Patricia
+Barbara
+Nancy
+Lisa
+Betty
+Margaret"""
+
+# Assignment Defaults
+DEFAULT_FIXED_SEATS = """John: A2
+Mary: B2"""
+
+DEFAULT_PREFERRED_SIDE = """John: Linda, Karen"""
+DEFAULT_SPECIAL_COSTS = """John: 10"""
+
+# Weight Defaults
+DEFAULT_SIDE_WEIGHT = 5.0
+DEFAULT_FRONT_WEIGHT = 2.0
+DEFAULT_DIAGONAL_WEIGHT = 1.0
+DEFAULT_CORNER_WEIGHT = 5.0
+DEFAULT_GENDER_WEIGHT = 5.0
+DEFAULT_FIXED_WEIGHT = 2.0
+DEFAULT_EMPTY_WEIGHT = 5.0
+DEFAULT_PREFERRED_SIDE_WEIGHT = 1.0
+DEFAULT_UNIFORMITY_WEIGHT = 1.0
+
+# Optimization Defaults
+DEFAULT_ITERATIONS = 20000
+DEFAULT_INITIAL_TEMP = 10.0
+DEFAULT_COOLING_RATE = 0.9995
+
+#####################################
+# 1. Table Definitions & Utilities  #
+#####################################
 
 def parse_table_definitions(text):
     lines = text.strip().splitlines()
@@ -126,7 +177,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
       4. Empty seat clustering cost.
       5. Preferred side neighbour cost.
       6. Uniformity penalty: uniformity_weight times the variance of individual adjusted costs.
-      7. Special cost multipliers: each guest’s cost is multiplied by a specified factor.
+      7. Special cost multipliers: each guest's cost is multiplied by a specified factor.
     
     The overall cost is computed as the sum of the adjusted individual costs plus the uniformity penalty.
     
@@ -592,25 +643,25 @@ def combine_all_seating_dataframes(assignments, tables, table_letters):
 def get_current_settings():
     # Gather current settings from session state
     table_def_text = st.session_state.table_def_text if 'table_def_text' in st.session_state else DEFAULT_TABLE_DEF
-    default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
-    default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
+    default_male = DEFAULT_MALE_NAMES
+    default_female = DEFAULT_FEMALE_NAMES
     male_text = st.session_state.male_text if 'male_text' in st.session_state else default_male
     female_text = st.session_state.female_text if 'female_text' in st.session_state else default_female
-    fixed_text = st.session_state.fixed_text if 'fixed_text' in st.session_state else "John: A1\nMary: B2"
-    pref_side_text = st.session_state.pref_side_text if 'pref_side_text' in st.session_state else ""
-    special_cost_text = st.session_state.special_cost_multipliers_text if 'special_cost_multipliers_text' in st.session_state else ""
-    iterations = st.session_state.iterations if 'iterations' in st.session_state else 20000
-    initial_temp = st.session_state.initial_temp if 'initial_temp' in st.session_state else 10.0
-    cooling_rate = st.session_state.cooling_rate if 'cooling_rate' in st.session_state else 0.9995
-    side_weight = st.session_state.side_weight if 'side_weight' in st.session_state else 1.0
-    front_weight = st.session_state.front_weight if 'front_weight' in st.session_state else 1.0
-    diagonal_weight = st.session_state.diagonal_weight if 'diagonal_weight' in st.session_state else 1.0
-    corner_weight = st.session_state.corner_weight if 'corner_weight' in st.session_state else 5.0
-    gender_weight = st.session_state.gender_weight if 'gender_weight' in st.session_state else 5.0
-    fixed_weight = st.session_state.fixed_weight if 'fixed_weight' in st.session_state else 2.0
-    empty_weight = st.session_state.empty_weight if 'empty_weight' in st.session_state else 5.0
-    preferred_side_weight = st.session_state.preferred_side_weight if 'preferred_side_weight' in st.session_state else 1.0
-    uniformity_weight = st.session_state.uniformity_weight if 'uniformity_weight' in st.session_state else 1.0
+    fixed_text = st.session_state.fixed_text if 'fixed_text' in st.session_state else DEFAULT_FIXED_SEATS
+    pref_side_text = st.session_state.pref_side_text if 'pref_side_text' in st.session_state else DEFAULT_PREFERRED_SIDE
+    special_cost_text = st.session_state.special_cost_multipliers_text if 'special_cost_multipliers_text' in st.session_state else DEFAULT_SPECIAL_COSTS
+    iterations = st.session_state.iterations if 'iterations' in st.session_state else DEFAULT_ITERATIONS
+    initial_temp = st.session_state.initial_temp if 'initial_temp' in st.session_state else DEFAULT_INITIAL_TEMP
+    cooling_rate = st.session_state.cooling_rate if 'cooling_rate' in st.session_state else DEFAULT_COOLING_RATE
+    side_weight = st.session_state.side_weight if 'side_weight' in st.session_state else DEFAULT_SIDE_WEIGHT
+    front_weight = st.session_state.front_weight if 'front_weight' in st.session_state else DEFAULT_FRONT_WEIGHT
+    diagonal_weight = st.session_state.diagonal_weight if 'diagonal_weight' in st.session_state else DEFAULT_DIAGONAL_WEIGHT
+    corner_weight = st.session_state.corner_weight if 'corner_weight' in st.session_state else DEFAULT_CORNER_WEIGHT
+    gender_weight = st.session_state.gender_weight if 'gender_weight' in st.session_state else DEFAULT_GENDER_WEIGHT
+    fixed_weight = st.session_state.fixed_weight if 'fixed_weight' in st.session_state else DEFAULT_FIXED_WEIGHT
+    empty_weight = st.session_state.empty_weight if 'empty_weight' in st.session_state else DEFAULT_EMPTY_WEIGHT
+    preferred_side_weight = st.session_state.preferred_side_weight if 'preferred_side_weight' in st.session_state else DEFAULT_PREFERRED_SIDE_WEIGHT
+    uniformity_weight = st.session_state.uniformity_weight if 'uniformity_weight' in st.session_state else DEFAULT_UNIFORMITY_WEIGHT
     special_cost_multipliers = parse_special_cost_multipliers(special_cost_text)
     
     return {
@@ -707,8 +758,8 @@ def main():
                                            value=settings["female_names"], height=150,
                                            key='female_text', help="One female name per line.")
     else:
-        default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
-        default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
+        default_male = DEFAULT_MALE_NAMES
+        default_female = DEFAULT_FEMALE_NAMES
         male_text = st.sidebar.text_area("Males (one per line)", value=default_male, height=150,
                                          key='male_text', help="One male name per line.")
         female_text = st.sidebar.text_area("Females (one per line)", value=default_female, height=150,
@@ -731,7 +782,7 @@ def main():
                                           key='fixed_text', help="Format: Name: Seat")
     else:
         fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
-                                          value="John: A1\nMary: B2", height=100,
+                                          value="John: A2\nMary: B2", height=100,
                                           key='fixed_text', help="Format: Name: Seat")
     fixed_positions = parse_fixed_seats(fixed_text)
     
@@ -739,7 +790,7 @@ def main():
     st.sidebar.header("Preferred Side Neighbour Preferences")
     pref_side_text = st.sidebar.text_area(
         "Format: Person: Neighbour1, Neighbour2, ...", 
-        value=st.session_state.pref_side_text if 'pref_side_text' in st.session_state else "",
+        value="John: Linda, Karen",  # Set default value here
         height=100,
         key='pref_side_text',
         help="For example: Alice: Bob, Charlie"
@@ -751,7 +802,7 @@ def main():
     st.sidebar.markdown("For guests whose cost you want to lower (or raise), enter one per line in the format: **Name: multiplier**. (A multiplier less than 1 lowers the cost.)")
     special_cost_text = st.sidebar.text_area(
         "Special Cost Multipliers", 
-        value=st.session_state.special_cost_multipliers_text if 'special_cost_multipliers_text' in st.session_state else "",
+        value="John: 10",  # Set default value here
         height=100,
         key='special_cost_multipliers_text',
         help="Example: Alice: 0.5  (means Alice's penalty is halved)"
@@ -766,17 +817,17 @@ def main():
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
         side_weight = st.sidebar.number_input("Side Neighbour Weight", 
-                                              value=settings["weights"].get("side_neighbour_weight", 5.0),
+                                              value=settings["weights"].get("side_neighbour_weight", DEFAULT_SIDE_WEIGHT),
                                               step=1.0, format="%.1f",
                                               key='side_weight',
                                               help="Weight for repeated side neighbours.")
         front_weight = st.sidebar.number_input("Front Neighbour Weight", 
-                                               value=settings["weights"].get("front_neighbour_weight", 2.0),
+                                               value=settings["weights"].get("front_neighbour_weight", DEFAULT_FRONT_WEIGHT),
                                                step=1.0, format="%.1f",
                                                key='front_weight',
                                                help="Weight for repeated front neighbours.")
         diagonal_weight = st.sidebar.number_input("Diagonal Neighbour Weight", 
-                                                  value=settings["weights"].get("diagonal_neighbour_weight", 1.0),
+                                                  value=settings["weights"].get("diagonal_neighbour_weight", DEFAULT_DIAGONAL_WEIGHT),
                                                   step=1.0, format="%.1f",
                                                   key='diagonal_weight',
                                                   help="Weight for repeated diagonal neighbours.")
@@ -801,41 +852,41 @@ def main():
                                                key='empty_weight',
                                                help="Weight for boundaries between empty and occupied seats.")
         preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", 
-                                                        value=settings["weights"].get("preferred_side_weight", 1.0),
+                                                        value=settings["weights"].get("preferred_side_weight", DEFAULT_PREFERRED_SIDE_WEIGHT),
                                                         step=0.1, format="%.1f",
                                                         key='preferred_side_weight',
                                                         help="Penalty weight if a preferred side neighbour is missing.")
         uniformity_weight = st.sidebar.number_input("Uniformity Weight", 
-                                                    value=settings["weights"].get("uniformity_weight", 1.0),
+                                                    value=settings["weights"].get("uniformity_weight", DEFAULT_UNIFORMITY_WEIGHT),
                                                     step=0.1, format="%.1f",
                                                     key='uniformity_weight',
                                                     help="Extra penalty for uneven distribution of individual costs.")
     else:
-        side_weight = st.sidebar.number_input("Side Neighbour", value=5.0, step=1.0, format="%.1f",
+        side_weight = st.sidebar.number_input("Side Neighbour", value=DEFAULT_SIDE_WEIGHT, step=1.0, format="%.1f",
                                               key='side_weight',
                                               help="Weight for repeated side neighbours.")
-        front_weight = st.sidebar.number_input("Front Neighbour", value=2.0, step=1.0, format="%.1f",
+        front_weight = st.sidebar.number_input("Front Neighbour", value=DEFAULT_FRONT_WEIGHT, step=1.0, format="%.1f",
                                                key='front_weight',
                                                help="Weight for repeated front neighbours.")
-        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", value=1.0, step=1.0, format="%.1f",
+        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", value=DEFAULT_DIAGONAL_WEIGHT, step=1.0, format="%.1f",
                                                   key='diagonal_weight',
                                                   help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner Weight", value=5.0, step=0.1, format="%.1f",
+        corner_weight = st.sidebar.number_input("Corner Weight", value=DEFAULT_CORNER_WEIGHT, step=0.1, format="%.1f",
                                                 key='corner_weight',
                                                 help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
-        gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
+        gender_weight = st.sidebar.number_input("Gender Weight", value=DEFAULT_GENDER_WEIGHT, step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 help="Weight for adjacent same-gender seats.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=2.0, step=0.1, format="%.1f",
+        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=DEFAULT_FIXED_WEIGHT, step=0.1, format="%.1f",
                                                key='fixed_weight',
                                                help="Extra weight for fixed-seat persons.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=5.0, step=0.1, format="%.1f",
+        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=DEFAULT_EMPTY_WEIGHT, step=0.1, format="%.1f",
                                                key='empty_weight',
                                                help="Weight for boundaries between empty and occupied seats.")
-        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", value=1.0, step=0.1, format="%.1f",
+        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", value=DEFAULT_PREFERRED_SIDE_WEIGHT, step=0.1, format="%.1f",
                                                         key='preferred_side_weight',
                                                         help="Penalty weight if a preferred side neighbour is missing.")
-        uniformity_weight = st.sidebar.number_input("Uniformity Weight", value=1.0, step=0.1, format="%.1f",
+        uniformity_weight = st.sidebar.number_input("Uniformity Weight", value=DEFAULT_UNIFORMITY_WEIGHT, step=0.1, format="%.1f",
                                                     key='uniformity_weight',
                                                     help="Extra penalty for uneven distribution of individual costs.")
     
@@ -857,13 +908,13 @@ def main():
                                      key='cooling_rate',
                                      help="Cooling multiplier per iteration.")
         else:
-            iterations = st.number_input("Iterations", value=20000, step=1000, min_value=1000,
+            iterations = st.number_input("Iterations", value=DEFAULT_ITERATIONS, step=1000, min_value=1000,
                                          key='iterations',
                                          help="Number of iterations for simulated annealing.")
-            initial_temp = st.number_input("Initial Temperature", value=10.0, step=1.0,
+            initial_temp = st.number_input("Initial Temperature", value=DEFAULT_INITIAL_TEMP, step=1.0,
                                            key='initial_temp',
                                            help="Starting temperature for simulated annealing.")
-            cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=0.9995,
+            cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=DEFAULT_COOLING_RATE,
                                      key='cooling_rate',
                                      help="Cooling multiplier per iteration.")
     
