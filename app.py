@@ -43,6 +43,7 @@ DEFAULT_FIXED_SEATS = """John: A2
 Mary: B2"""
 
 DEFAULT_PREFERRED_SIDE = """John: Linda, Karen"""
+DEFAULT_EXCLUDED_NEIGHBOURS = """John: Mary, Susan"""
 DEFAULT_SPECIAL_COSTS = """John: 100"""
 
 # Weight Defaults
@@ -50,11 +51,12 @@ DEFAULT_SIDE_WEIGHT = 5.0
 DEFAULT_FRONT_WEIGHT = 2.0
 DEFAULT_DIAGONAL_WEIGHT = 1.0
 DEFAULT_CORNER_WEIGHT = 5.0
-DEFAULT_GENDER_WEIGHT = 5.0
+DEFAULT_GENDER_WEIGHT = 10.0
 DEFAULT_FIXED_WEIGHT = 2.0
 DEFAULT_EMPTY_WEIGHT = 5.0
 DEFAULT_PREFERRED_SIDE_WEIGHT = 1.0
-DEFAULT_UNIFORMITY_WEIGHT = 1.0
+DEFAULT_UNIFORMITY_WEIGHT = 0.0
+DEFAULT_EXCLUDED_NEIGHBOUR_WEIGHT = 1.0
 
 # Optimization Defaults
 DEFAULT_ITERATIONS = 20000
@@ -164,8 +166,8 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                  side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
                  corner_weight=5.0,  # exponential base for corner penalty
                  gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
-                 preferred_side_preferences=None, preferred_side_weight=1.0,
-                 uniformity_weight=1.0, special_cost_multipliers=None, breakdown=False):
+                 preferred_side_preferences=None, preferred_side_weight=1.0, excluded_preferences=None,
+                 excluded_neighbour_weight=1.0, uniformity_weight=1.0, special_cost_multipliers=None, breakdown=False):
     """
     Computes the overall cost over all seating rounds.
     
@@ -191,6 +193,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
     indiv = compute_individual_cost_breakdown(assignments, seat_neighbors, tables,
                                                person_genders, fixed_positions,
                                                preferred_side_preferences,
+                                               excluded_preferences,
                                                {"side_neighbour_weight": side_weight,
                                                 "front_neighbour_weight": front_weight,
                                                 "diagonal_neighbour_weight": diagonal_weight,
@@ -198,7 +201,9 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                                                 "gender_weight": gender_weight,
                                                 "fixed_weight": fixed_weight,
                                                 "empty_weight": empty_weight,
-                                                "preferred_side_weight": preferred_side_weight})
+                                                "preferred_side_weight": preferred_side_weight,
+                                                "excluded_neighbour_weight": excluded_neighbour_weight}
+                                               )
     # Adjust each individual's cost by the special multiplier (default=1.0)
     adjusted_costs = {}
     regular_costs = {}  # Track costs for persons without special multipliers
@@ -234,7 +239,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
             "overall_indiv_cost": overall_indiv_cost,
             "uniformity_cost": uniformity_penalty,
             "total_cost": total_cost,
-            "adjusted_individual_costs": adjusted_costs
+            "adjusted_individual_costs": adjusted_costs,
         }
         return total_cost, breakdown_dict
     else:
@@ -309,7 +314,7 @@ def initialize_assignments_alternating(people, person_genders, tables, fixed_pos
                         person = "Empty"
                 round_assignment[seat] = person
 
-        # If any free persons remain (because the count wasn’t exactly equal) assign them arbitrarily.
+        # If any free persons remain (because the count wasn't exactly equal) assign them arbitrarily.
         remaining_seats = [s for s in free_seats if s not in round_assignment]
         for seat in remaining_seats:
             if free_all:
@@ -451,6 +456,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                          corner_weight=5.0,  # exponential base for corner penalty
                          gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
                          preferred_side_preferences=None, preferred_side_weight=1.0,
+                         excluded_preferences=None, excluded_neighbour_weight=1.0,
                          uniformity_weight=1.0, special_cost_multipliers=None,
                          record_history=True):
     """
@@ -469,12 +475,15 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     """
     if special_cost_multipliers is None:
         special_cost_multipliers = {}
+    if excluded_preferences is None:
+        excluded_preferences = {}
     if record_history:
         current_cost, current_breakdown = compute_cost(
             assignments, seat_neighbors, tables, person_genders, fixed_positions,
             side_weight, front_weight, diagonal_weight, corner_weight,
             gender_weight, fixed_weight, empty_weight,
             preferred_side_preferences, preferred_side_weight,
+            excluded_preferences, excluded_neighbour_weight,
             uniformity_weight, special_cost_multipliers, breakdown=True
         )
     else:
@@ -483,6 +492,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
             side_weight, front_weight, diagonal_weight, corner_weight,
             gender_weight, fixed_weight, empty_weight,
             preferred_side_preferences, preferred_side_weight,
+            excluded_preferences, excluded_neighbour_weight,
             uniformity_weight, special_cost_multipliers, breakdown=False
         )
     best_cost = current_cost
@@ -556,6 +566,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                     side_weight, front_weight, diagonal_weight, corner_weight,
                     gender_weight, fixed_weight, empty_weight,
                     preferred_side_preferences, preferred_side_weight,
+                    excluded_preferences, excluded_neighbour_weight,
                     uniformity_weight, special_cost_multipliers, breakdown=True
                 )
             else:
@@ -564,6 +575,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                     side_weight, front_weight, diagonal_weight, corner_weight,
                     gender_weight, fixed_weight, empty_weight,
                     preferred_side_preferences, preferred_side_weight,
+                    excluded_preferences, excluded_neighbour_weight,
                     uniformity_weight, special_cost_multipliers, breakdown=False
                 )
             delta = new_cost - current_cost
@@ -590,7 +602,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                 block_seats = [(table_id, row, col) for row in [0, 1] for col in range(seats_per_side - k, seats_per_side)]
             # Save the current occupants of these seats so that we can revert if needed.
             old_block = {seat: assignments[r][seat] for seat in block_seats}
-            # Create a new assignment for round r by flipping each row’s block.
+            # Create a new assignment for round r by flipping each row's block.
             new_assignment = assignments[r].copy()
             for row in [0, 1]:
                 if corner == "left":
@@ -608,6 +620,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                     side_weight, front_weight, diagonal_weight, corner_weight,
                     gender_weight, fixed_weight, empty_weight,
                     preferred_side_preferences, preferred_side_weight,
+                    excluded_preferences, excluded_neighbour_weight,
                     uniformity_weight, special_cost_multipliers, breakdown=True
                 )
             else:
@@ -616,6 +629,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
                     side_weight, front_weight, diagonal_weight, corner_weight,
                     gender_weight, fixed_weight, empty_weight,
                     preferred_side_preferences, preferred_side_weight,
+                    excluded_preferences, excluded_neighbour_weight,
                     uniformity_weight, special_cost_multipliers, breakdown=False
                 )
             delta = new_cost - current_cost
@@ -647,7 +661,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
 #####################################
 
 def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                      preferred_side_preferences, weights):
+                                      preferred_side_preferences, excluded_preferences, weights):
     """
     Computes a cost breakdown per person.
     Returns a dict mapping person -> dict with keys:
@@ -664,6 +678,10 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
     fixed_weight = weights.get("fixed_weight", 2.0)
     empty_weight = weights.get("empty_weight", 5.0)
     preferred_side_weight = weights.get("preferred_side_weight", 1.0)
+    excluded_neighbour_weight = weights.get("excluded_neighbour_weight", 1.0)
+
+    if excluded_preferences is None:
+        excluded_preferences = {}
     
     indiv_breakdown = {}
     for person in person_genders:
@@ -676,7 +694,8 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
             "preferred_side_cost": 0,
             "gender_cost": 0,
             "empty_cost": 0,
-            "total_cost": 0
+            "total_cost": 0,
+            "excluded_cost": 0,
         }
     # Compute neighbor costs per person.
     indiv_neighbors = defaultdict(lambda: {"side": [], "front": [], "diagonal": []})
@@ -734,6 +753,24 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
         # Count how many desired neighbors were never found as side neighbors
         missing = len(desired - found_neighbors)
         indiv_breakdown[person]["preferred_side_cost"] = missing * preferred_side_weight
+    
+    # st.write(excluded_preferences, "excluded_preferences")
+    # for person in excluded_preferences:
+    #     if person_genders.get(person, "X") == "X":
+    #         continue
+    #     desired = set(excluded_preferences[person])
+    #     # Track which desired neighbors we've found
+    #     found_neighbors = set()
+    #     for round_assign in assignments:
+    #         for seat, seated_person in round_assign.items():
+    #             if seated_person == person:
+    #                 # Only consider valid neighbor seats that exist in the assignment
+    #                 valid_neighbors = [n_seat for n_seat in seat_neighbors[seat]["side"] if n_seat in round_assign]
+    #                 side_nbrs = set(round_assign[n_seat] for n_seat in valid_neighbors)
+    #                 found_neighbors.update(desired & side_nbrs)
+    #     # Count how many desired neighbors were never found as side neighbors
+    #     missing = len(desired - found_neighbors)
+    #     indiv_breakdown[person]["excluded_cost"] = missing * excluded_neighbour_weight
 
     # Gender cost: for each adjacent same-gender pair, attribute half cost to each person.
     for round_assign in assignments:
@@ -754,7 +791,7 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                         indiv_breakdown[p2]["gender_cost"] += gender_weight
     
     # Additional penalty for front neighbors (vertical pairing)
-    # In a 2-row table, the “front” neighbor is the seat in the opposite row with the same column.
+    # In a 2-row table, the "front" neighbor is the seat in the opposite row with the same column.
     for round_assign in assignments:
         for t, seats_per_side in tables.items():
             for col in range(seats_per_side):
@@ -781,16 +818,36 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                         indiv_breakdown[p2]["empty_cost"] += empty_weight
                     elif p2.startswith("Empty") and not p1.startswith("Empty"):
                         indiv_breakdown[p1]["empty_cost"] += empty_weight
+        # Excluded neighbour cost per person.
 
+    for person in person_genders:
+        if person in excluded_preferences:
+            desired_exclusions = set(excluded_preferences[person])
+            found_exclusions = set()
+            for round_assign in assignments:
+                for seat, occupant in round_assign.items():
+                    if occupant == person:
+                        # Check all adjacent neighbours (side, front, and diagonal)
+                        all_neighbors = []
+                        for n_type in ["side", "front", "diagonal"]:
+                            all_neighbors.extend(seat_neighbors[seat][n_type])
+                        for n_seat in set(all_neighbors):
+                            if n_seat in round_assign:
+                                n_person = round_assign[n_seat]
+                                if n_person in desired_exclusions:
+                                    found_exclusions.add(n_person)
+            indiv_breakdown[person]["excluded_cost"] = len(found_exclusions) * weights.get("excluded_neighbour_weight", 1.0)
+        else:
+            indiv_breakdown[person]["excluded_cost"] = 0
 
-
-    # Total cost per person.
     for person, comp in indiv_breakdown.items():
         comp["total_cost"] = (comp["neighbor_cost"] +
                               comp["corner_cost"] +
                               comp["preferred_side_cost"] +
+                              comp["excluded_cost"] +
                               comp["gender_cost"] +
                               comp["empty_cost"])
+
     return indiv_breakdown
 
 #####################################
@@ -812,6 +869,28 @@ def seating_dataframe_for_table(assignments, table_id, table_letter):
 #####################################
 # 6. Fixed Seat Input Parser         #
 #####################################
+
+def parse_excluded_neighbours(text):
+    """
+    Parses lines of the form:
+        Alice: Bob, Charlie
+    meaning Alice would prefer NOT to be seated next to Bob or Charlie.
+    Returns a dictionary mapping person -> list of names to avoid.
+    """
+    excluded = {}
+    lines = text.strip().splitlines()
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            person_part, neighbours_str = line.split(":", 1)
+            person = person_part.strip()
+            neighbours = [n.strip() for n in neighbours_str.split(",") if n.strip()]
+            excluded[person] = neighbours
+        except Exception:
+            continue
+    return excluded
+
 
 def parse_fixed_seats(text):
     fixed = {}
@@ -910,6 +989,7 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
                                       gender_weight, fixed_weight, empty_weight,
                                       people, person_genders, fixed_positions, tables,
                                       preferred_side_preferences, preferred_side_weight,
+                                      excluded_preferences, excluded_neighbour_weight,
                                       uniformity_weight, special_cost_multipliers,
                                       num_rounds=3):
     """
@@ -939,6 +1019,7 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
         side_weight, front_weight, diagonal_weight, corner_weight,
         gender_weight, fixed_weight, empty_weight,
         preferred_side_preferences, preferred_side_weight,
+        excluded_preferences, excluded_neighbour_weight,
         uniformity_weight, special_cost_multipliers,
         record_history=True
     )
@@ -974,6 +1055,7 @@ def get_current_settings():
     female_text = st.session_state.female_text if 'female_text' in st.session_state else default_female
     fixed_text = st.session_state.fixed_text if 'fixed_text' in st.session_state else DEFAULT_FIXED_SEATS
     pref_side_text = st.session_state.pref_side_text if 'pref_side_text' in st.session_state else DEFAULT_PREFERRED_SIDE
+    excluded_text = st.session_state.excluded_text if 'excluded_text' in st.session_state else DEFAULT_EXCLUDED_NEIGHBOURS
     special_cost_text = st.session_state.special_cost_multipliers_text if 'special_cost_multipliers_text' in st.session_state else DEFAULT_SPECIAL_COSTS
     iterations = st.session_state.iterations if 'iterations' in st.session_state else DEFAULT_ITERATIONS
     initial_temp = st.session_state.initial_temp if 'initial_temp' in st.session_state else DEFAULT_INITIAL_TEMP
@@ -996,6 +1078,7 @@ def get_current_settings():
         "female_names": female_text,
         "fixed_assignments": fixed_text,
         "preferred_side_preferences_text": pref_side_text,
+        "excluded_preferences_text": excluded_text,
         "special_cost_multipliers_text": special_cost_text,
         "optimization_params": {
             "iterations": iterations,
@@ -1328,12 +1411,22 @@ def main():
         st.header("Preferred Side Neighbours")
         pref_side_text = st.text_area(
             "", 
-            value=DEFAULT_PREFERRED_SIDE,  # Set default value here
+            value=DEFAULT_PREFERRED_SIDE,
             height=100,
             key='pref_side_text',
             help="For example: Alice: Bob, Charlie. Meaning Alice prefers to sit next to Bob and Charlie. Each line is one person and their preferred neighbours."
         )
         preferred_side_preferences = parse_preferred_side_neighbours(pref_side_text)
+
+        st.header("Excluded Neighbours")
+        exclude_text = st.text_area(
+            "", 
+            value=DEFAULT_EXCLUDED_NEIGHBOURS,
+            height=100,
+            key='exclude_text',
+            help="For example: Alice: Bob, Charlie  (means Alice prefers NOT to sit next to Bob or Charlie)"
+        )
+        excluded_preferences = parse_excluded_neighbours(exclude_text)
         
         # Special Cost Multipliers
         st.header("Special Cost Multipliers")
@@ -1393,6 +1486,13 @@ def main():
                                                         step=0.1, format="%.1f",
                                                         key='preferred_side_weight',
                                                         help="Penalty weight if a preferred side neighbour is missing.")
+
+            excluded_neighbour_weight = st.number_input("Excluded Neighbour", 
+                                                        value=settings["weights"].get("excluded_neighbour_weight", DEFAULT_EXCLUDED_NEIGHBOUR_WEIGHT), 
+                                                        step=1.0, format="%.1f",
+                                                        key='excluded_neighbour_weight',
+                                                        help="Penalty weight if an excluded neighbour is found adjacent.")
+
             uniformity_weight = st.number_input("Uniformity", 
                                                 value=settings["weights"].get("uniformity_weight", DEFAULT_UNIFORMITY_WEIGHT),
                                                 step=0.1, format="%.1f",
@@ -1423,6 +1523,11 @@ def main():
             preferred_side_weight = st.number_input("Preferred Side Neighbour", value=DEFAULT_PREFERRED_SIDE_WEIGHT, step=0.1, format="%.1f",
                                                         key='preferred_side_weight',
                                                         help="Penalty weight if a preferred side neighbour is missing.")
+            excluded_neighbour_weight = st.number_input("Excluded Neighbour", 
+                                                        value=DEFAULT_EXCLUDED_NEIGHBOUR_WEIGHT, 
+                                                        step=1.0, format="%.1f",
+                                                        key='excluded_neighbour_weight',
+                                                        help="Penalty weight if an excluded neighbour is found adjacent.")
             uniformity_weight = st.number_input("Uniformity", value=DEFAULT_UNIFORMITY_WEIGHT, step=0.1, format="%.1f",
                                                 key='uniformity_weight',
                                                 help="Extra penalty for uneven distribution of individual costs.")
@@ -1467,6 +1572,7 @@ def main():
                 gender_weight, fixed_weight, empty_weight,
                 people, person_genders, fixed_positions, TABLES,
                 preferred_side_preferences, preferred_side_weight,
+                excluded_preferences, excluded_neighbour_weight,
                 uniformity_weight, special_cost_multipliers,
                 num_rounds=num_rounds
             )
@@ -1488,11 +1594,17 @@ def main():
                 "gender_weight": gender_weight,
                 "fixed_weight": fixed_weight,
                 "empty_weight": empty_weight,
-                "preferred_side_weight": preferred_side_weight
+                "preferred_side_weight": preferred_side_weight,
+                "excluded_neighbour_weight": excluded_neighbour_weight
             }
             indiv_costs = compute_individual_cost_breakdown(
-                best_assignments, compute_seat_neighbors(TABLES), TABLES,
-                person_genders, fixed_positions, preferred_side_preferences,
+                best_assignments,
+                compute_seat_neighbors(TABLES),
+                TABLES,
+                person_genders,
+                fixed_positions,
+                preferred_side_preferences,  
+                excluded_preferences,        
                 weights
             )
             st.session_state.indiv_costs = indiv_costs
