@@ -52,7 +52,7 @@ def generate_seats(tables):
     """
     Returns a list of all seat positions.
     Each seat is a tuple: (table, row, col)
-    where table is an integer key, row is 0 or 1, and col in [0, seats per side - 1].
+    where table is a key, row is 0 or 1, and col in [0, seats per side - 1].
     """
     seats = []
     for t, seats_per_side in tables.items():
@@ -68,7 +68,7 @@ def compute_seat_neighbors(tables):
     Returns a dictionary mapping seat -> dictionary with keys:
       - "side": seats immediately to the left and right (same row)
       - "front": seat directly opposite (other row, same column)
-      - "diagonal": seats in the opposite row and one column left/right.
+      - "diagonal": seats in the opposite row, one column left/right.
     """
     seat_neighbors = {}
     for t, seats_per_side in tables.items():
@@ -96,26 +96,51 @@ def compute_seat_neighbors(tables):
                 seat_neighbors[s] = neighbors
     return seat_neighbors
 
+def parse_preferred_side_neighbours(text):
+    """
+    Parses preferred side neighbour assignments.
+    Each line should be in the format: Person: Neighbour1, Neighbour2, ...
+    Returns a dictionary mapping person -> list of desired side neighbours.
+    """
+    pref = {}
+    lines = text.strip().splitlines()
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            person_part, neighbours_str = line.split(":", 1)
+            person = person_part.strip()
+            neighbours = [n.strip() for n in neighbours_str.split(",") if n.strip()]
+            pref[person] = neighbours
+        except Exception:
+            continue
+    return pref
+
+#####################################
+# 3. Cost & Neighbor Preference      #
+#####################################
+
 def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
                  side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
-                 corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0):
+                 corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
+                 preferred_side_preferences=None, preferred_side_weight=1.0):
     """
     Computes the total cost over all seating rounds.
     
     Cost components:
-    1. **Neighbour Cost:** For each person (except those with neutral gender "X")
-       the cost is computed separately for each neighbour type. For a given type,
-       the cost is (total neighbours encountered over rounds – number of unique neighbours)
-       multiplied by that type’s weight. For fixed-seat persons the cost is further scaled
-       by fixed_weight.
-    2. **Corner Cost:** For each person, if they sit in a corner (first or last seat in a row)
-       more than once, add (count - 1) multiplied by corner_weight.
-    3. **Gender Cost:** In each row of each table in each round, for every adjacent pair
-       with the same gender, add 1 multiplied by gender_weight.
-    4. **Empty Seat Clustering Cost:** In each row of each table in each round, for every
-       adjacent pair where one seat is "Empty" and the other is not, add 1 multiplied by empty_weight.
+      1. **Neighbour Cost:** For each person (except those with gender "X")
+         cost is computed for each neighbour type (side, front, diagonal) as:
+             (total neighbours encountered – unique neighbours)
+         multiplied by that type’s weight. Fixed-seat persons have their cost scaled by fixed_weight.
+      2. **Corner Cost:** For each person, if they sit at a corner (first or last seat in a row)
+         more than once, add (count - 1) multiplied by corner_weight.
+      3. **Gender Cost:** In each row of each table in each round, every adjacent same-gender pair adds 1 multiplied by gender_weight.
+      4. **Empty Seat Clustering Cost:** In each row, every adjacent pair where one seat is "Empty" adds 1 multiplied by empty_weight.
+      5. **Preferred Side Neighbour Cost:** For each round and for every person with preferences,
+         for each desired neighbour not found among the actual side neighbours (immediate left/right)
+         a penalty of 1 is added (and then scaled by preferred_side_weight).
     """
-    # Gather neighbour data by type and count corner occurrences.
+    # Neighbour cost components (by type) and corner counts
     person_neighbors_by_type = defaultdict(lambda: {"side": [], "front": [], "diagonal": []})
     person_corner_counts = defaultdict(int)
     for round_assign in assignments:
@@ -127,7 +152,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                 for n_seat in n_list:
                     neighbor_person = round_assign[n_seat]
                     person_neighbors_by_type[person][n_type].append(neighbor_person)
-                    
+    
     neighbor_cost = 0
     for person, type_dict in person_neighbors_by_type.items():
         if person_genders.get(person, "X") == "X":
@@ -175,11 +200,27 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                     p2 = round_assign[seats_in_row[i+1]]
                     if (p1.startswith("Empty") and not p2.startswith("Empty")) or (not p1.startswith("Empty") and p2.startswith("Empty")):
                         empty_cost += 1
-                        
+
+    # Preferred Side Neighbour Cost:
+    preferred_side_cost = 0
+    if preferred_side_preferences is None:
+        preferred_side_preferences = {}
+    for round_assign in assignments:
+        for seat, person in round_assign.items():
+            # Only consider persons with a specified preferred side neighbour list
+            if person in preferred_side_preferences:
+                desired = set(preferred_side_preferences[person])
+                # Gather actual side neighbours (immediate left/right)
+                side_nbrs = [round_assign[n_seat] for n_seat in seat_neighbors[seat]["side"]]
+                for d in desired:
+                    if d not in side_nbrs:
+                        preferred_side_cost += 1
+
     total_cost = (neighbor_cost +
                   corner_weight * corner_cost +
                   gender_weight * gender_cost +
-                  empty_weight * empty_cost)
+                  empty_weight * empty_cost +
+                  preferred_side_weight * preferred_side_cost)
     return total_cost
 
 def get_neighbors_info_by_type(assignments, seat_neighbors, tables):
@@ -208,7 +249,7 @@ def get_neighbors_info_by_type(assignments, seat_neighbors, tables):
     return person_neighbors, corner_count
 
 #####################################
-# 3. Optimization Functions          #
+# 4. Optimization Functions          #
 #####################################
 
 def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
@@ -239,7 +280,8 @@ def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
 def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, person_genders,
                          iterations=20000, initial_temp=10, cooling_rate=0.9995,
                          side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
-                         corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0):
+                         corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
+                         preferred_side_preferences=None, preferred_side_weight=1.0):
     """
     Uses simulated annealing to optimize seating assignments.
     In each iteration, two non-fixed seats in a random round are swapped.
@@ -247,7 +289,9 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     Returns the best assignments found and the best cost.
     """
     current_cost = compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                side_weight, front_weight, diagonal_weight, corner_weight, gender_weight, fixed_weight, empty_weight)
+                                side_weight, front_weight, diagonal_weight, corner_weight,
+                                gender_weight, fixed_weight, empty_weight,
+                                preferred_side_preferences, preferred_side_weight)
     best_cost = current_cost
     best_assignments = copy.deepcopy(assignments)
     num_rounds = len(assignments)
@@ -263,7 +307,9 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
         seat1, seat2 = random.sample(free_seats, 2)
         assignments[r][seat1], assignments[r][seat2] = assignments[r][seat2], assignments[r][seat1]
         new_cost = compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                                side_weight, front_weight, diagonal_weight, corner_weight, gender_weight, fixed_weight, empty_weight)
+                                side_weight, front_weight, diagonal_weight, corner_weight,
+                                gender_weight, fixed_weight, empty_weight,
+                                preferred_side_preferences, preferred_side_weight)
         delta = new_cost - current_cost
         if delta < 0 or random.random() < math.exp(-delta / temp):
             current_cost = new_cost
@@ -276,7 +322,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     return best_assignments, best_cost
 
 #####################################
-# 4. Seating Arrangement Display     #
+# 5. Seating Arrangement Display     #
 #####################################
 
 def seating_dataframe_for_table(assignments, table_id, table_letter):
@@ -296,7 +342,7 @@ def seating_dataframe_for_table(assignments, table_id, table_letter):
     return df
 
 #####################################
-# 5. Fixed Seat Input Parser         #
+# 6. Fixed Seat Input Parser         #
 #####################################
 
 def parse_fixed_seats(text):
@@ -317,7 +363,7 @@ def parse_fixed_seats(text):
             
             # Extract table letter and seat number
             table_letter = seat_id[0]
-            seat_num = int(seat_id[1:]) - 1  # Convert to 0-based index
+            seat_num = int(seat_id[1:]) - 1  # 0-based index
             
             # Find table_id from table letter
             table_id = None
@@ -339,7 +385,7 @@ def parse_fixed_seats(text):
     return fixed
 
 #####################################
-# 6. Table Layout Visualization       #
+# 7. Table Layout Visualization       #
 #####################################
 
 def generate_table_html(table_id, table_letter, tables):
@@ -398,13 +444,14 @@ def display_table_layouts(tables, table_letters):
         components.html(html, height=180, scrolling=False)
 
 #####################################
-# 7. Run Optimization & Build Data  #
+# 8. Run Optimization & Build Data  #
 #####################################
 
 def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
                                       side_weight, front_weight, diagonal_weight,
                                       corner_weight, gender_weight, fixed_weight, empty_weight,
-                                      people, person_genders, fixed_positions, tables):
+                                      people, person_genders, fixed_positions, tables,
+                                      preferred_side_preferences, preferred_side_weight):
     """
     Runs the seating optimization and returns:
       - best_assignments: list (per round) of seat -> person assignments,
@@ -428,7 +475,8 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     best_assignments, best_cost = optimize_assignments(
         assignments, seat_neighbors, tables, fixed_positions, person_genders,
         iterations, initial_temp, cooling_rate,
-        side_weight, front_weight, diagonal_weight, corner_weight, gender_weight, fixed_weight, empty_weight
+        side_weight, front_weight, diagonal_weight, corner_weight, gender_weight, fixed_weight, empty_weight,
+        preferred_side_preferences, preferred_side_weight
     )
     neighbors_info, corner_count = get_neighbors_info_by_type(best_assignments, seat_neighbors, tables)
     return best_assignments, best_cost, neighbors_info, corner_count
@@ -454,29 +502,27 @@ def combine_all_seating_dataframes(assignments, tables, table_letters):
     return pd.DataFrame(all_data)
 
 #####################################
-# 8. Main App                        #
+# 9. Main App                        #
 #####################################
 
 def get_current_settings():
     """Collects all current settings into a dictionary using current UI values."""
-    # Get table definitions from text area
+    # Get table definitions
     table_def_text = st.session_state.table_def_text if 'table_def_text' in st.session_state else DEFAULT_TABLE_DEF
-    
-    # Get names from text areas
+    # Get names
     default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
     default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
     male_text = st.session_state.male_text if 'male_text' in st.session_state else default_male
     female_text = st.session_state.female_text if 'female_text' in st.session_state else default_female
-    
-    # Get fixed assignments
+    # Fixed assignments
     fixed_text = st.session_state.fixed_text if 'fixed_text' in st.session_state else "John: A1\nMary: B2"
-    
-    # Get optimization parameters
+    # Preferred side neighbour preferences (as text)
+    pref_side_text = st.session_state.pref_side_text if 'pref_side_text' in st.session_state else ""
+    # Optimization parameters
     iterations = st.session_state.iterations if 'iterations' in st.session_state else 20000
     initial_temp = st.session_state.initial_temp if 'initial_temp' in st.session_state else 10.0
     cooling_rate = st.session_state.cooling_rate if 'cooling_rate' in st.session_state else 0.9995
-    
-    # Get weights, including separate neighbour type weights
+    # Weights (including separate neighbour type weights and preferred side weight)
     side_weight = st.session_state.side_weight if 'side_weight' in st.session_state else 1.0
     front_weight = st.session_state.front_weight if 'front_weight' in st.session_state else 1.0
     diagonal_weight = st.session_state.diagonal_weight if 'diagonal_weight' in st.session_state else 1.0
@@ -484,12 +530,14 @@ def get_current_settings():
     gender_weight = st.session_state.gender_weight if 'gender_weight' in st.session_state else 5.0
     fixed_weight = st.session_state.fixed_weight if 'fixed_weight' in st.session_state else 2.0
     empty_weight = st.session_state.empty_weight if 'empty_weight' in st.session_state else 5.0
+    preferred_side_weight = st.session_state.preferred_side_weight if 'preferred_side_weight' in st.session_state else 1.0
     
     return {
         "table_definitions": table_def_text,
         "male_names": male_text,
         "female_names": female_text,
         "fixed_assignments": fixed_text,
+        "preferred_side_preferences_text": pref_side_text,
         "optimization_params": {
             "iterations": iterations,
             "initial_temp": initial_temp,
@@ -502,18 +550,18 @@ def get_current_settings():
             "corner_weight": corner_weight,
             "gender_weight": gender_weight,
             "fixed_weight": fixed_weight,
-            "empty_weight": empty_weight
+            "empty_weight": empty_weight,
+            "preferred_side_weight": preferred_side_weight
         }
     }
 
 def main():
     st.title("SeatPlan")
     st.markdown("##### Optimizing seating arrangements for events.")
-    st.markdown("###### Use sidebar for additional customization")
+    st.markdown("###### Use the sidebar for additional customization")
     
-    # Add download button in the sidebar at the top
+    # Sidebar: Settings download/upload
     st.sidebar.markdown("# Settings")
-    
     if st.sidebar.button("Download Settings"):
         settings = get_current_settings()
         settings_json = json.dumps(settings, indent=2)
@@ -526,7 +574,6 @@ def main():
             mime="application/json",
             key="settings_download"
         )
-    
     uploaded_file = st.sidebar.file_uploader("Upload Settings", type=['json'])
     if uploaded_file is not None:
         try:
@@ -536,9 +583,9 @@ def main():
         except Exception as e:
             st.sidebar.error(f"Error loading settings: {str(e)}")
     
+    # Table Layout Configuration
     st.header("Table Layout Configuration")
     col1, col2 = st.columns([1, 2])
-    
     with col1:
         if "uploaded_settings" in st.session_state:
             settings = st.session_state.uploaded_settings
@@ -547,7 +594,7 @@ def main():
                 value=settings["table_definitions"],
                 height=150,
                 key='table_def_text',
-                help="Each line should be in the format 'Letter: Number'."
+                help="Each line: Letter: Number"
             )
         else:
             table_def_text = st.text_area(
@@ -555,11 +602,10 @@ def main():
                 value=DEFAULT_TABLE_DEF,
                 height=150,
                 key='table_def_text',
-                help="Each line should be in the format 'Letter: Number'."
+                help="Each line: Letter: Number"
             )
     global TABLES, TABLE_LETTERS
     TABLES, TABLE_LETTERS = parse_table_definitions(table_def_text)
-    
     with col2:
         st.markdown("Seat numberings for each table. Corner seats are highlighted in light red.")
         for table_id in sorted(TABLES.keys()):
@@ -567,22 +613,23 @@ def main():
             html = generate_table_html(table_id, table_letter, TABLES)
             components.html(html, height=180, scrolling=False)
     
+    # Guests
     st.sidebar.header("Guests")
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
         male_text = st.sidebar.text_area("Males (one per line)", 
                                          value=settings["male_names"], height=150,
-                                         key='male_text', help="Enter one male name per line.")
+                                         key='male_text', help="One male name per line.")
         female_text = st.sidebar.text_area("Females (one per line)", 
                                            value=settings["female_names"], height=150,
-                                           key='female_text', help="Enter one female name per line.")
+                                           key='female_text', help="One female name per line.")
     else:
         default_male = "John\nMike\nDavid\nSteve\nRobert\nJames\nWilliam\nRichard\nJoseph\nThomas"
         default_female = "Mary\nLinda\nSusan\nKaren\nPatricia\nBarbara\nNancy\nLisa\nBetty\nMargaret"
         male_text = st.sidebar.text_area("Males (one per line)", value=default_male, height=150,
-                                         key='male_text', help="Enter one male name per line.")
+                                         key='male_text', help="One male name per line.")
         female_text = st.sidebar.text_area("Females (one per line)", value=default_female, height=150,
-                                           key='female_text', help="Enter one female name per line.")
+                                           key='female_text', help="One female name per line.")
     male_names = [name.strip() for name in male_text.splitlines() if name.strip()]
     female_names = [name.strip() for name in female_text.splitlines() if name.strip()]
     people = male_names + female_names
@@ -592,68 +639,102 @@ def main():
     for name in female_names:
         person_genders[name] = "F"
     
+    # Fixed seat assignments
     st.sidebar.header("Fixed Seat Assignments")
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
         fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
                                           value=settings["fixed_assignments"], height=100,
-                                          key='fixed_text', help="Format: 'Name: Seat'.")
+                                          key='fixed_text', help="Format: Name: Seat")
     else:
         fixed_text = st.sidebar.text_area("Enter fixed seat assignments (e.g., 'John: A12')", 
                                           value="John: A1\nMary: B2", height=100,
-                                          key='fixed_text', help="Format: 'Name: Seat'.")
+                                          key='fixed_text', help="Format: Name: Seat")
     fixed_positions = parse_fixed_seats(fixed_text)
     
+    # Preferred side neighbour preferences
+    st.sidebar.header("Preferred Side Neighbour Preferences")
+    pref_side_text = st.sidebar.text_area(
+        "Format: Person: Neighbour1, Neighbour2, ...", 
+        value=st.session_state.pref_side_text if 'pref_side_text' in st.session_state else "",
+        height=100,
+        key='pref_side_text',
+        help="For example: Alice: Bob, Charlie"
+    )
+    preferred_side_preferences = parse_preferred_side_neighbours(pref_side_text)
+    
+    # Conditions & Weights
     st.sidebar.header("Conditions")
     st.sidebar.markdown("""
         Set the importance of each condition. Higher values make the condition more important.
     """)
-    
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
-        side_weight = st.sidebar.number_input("Side Neighbour", 
-                                         value=settings["weights"].get("side_neighbour_weight",5.0),
-                                         step=1.0, format="%.1f",
-                                         key='side_weight', help="Weight for repeated side neighbours.")
-        front_weight = st.sidebar.number_input("Front Neighbour", 
-                                         value=settings["weights"].get("front_neighbour_weight", 2.0),
-                                         step=1.0, format="%.1f",
-                                         key='front_weight', help="Weight for repeated front neighbours.")
-        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", 
-                                         value=settings["weights"].get("diagonal_neighbour_weight", 1.0),
-                                         step=1.0, format="%.1f",
-                                         key='diagonal_weight', help="Weight for repeated diagonal neighbours.")
+        side_weight = st.sidebar.number_input("Side Neighbour Weight", 
+                                              value=settings["weights"].get("side_neighbour_weight", 5.0),
+                                              step=1.0, format="%.1f",
+                                              key='side_weight',
+                                              help="Weight for repeated side neighbours.")
+        front_weight = st.sidebar.number_input("Front Neighbour Weight", 
+                                               value=settings["weights"].get("front_neighbour_weight", 2.0),
+                                               step=1.0, format="%.1f",
+                                               key='front_weight',
+                                               help="Weight for repeated front neighbours.")
+        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour Weight", 
+                                                  value=settings["weights"].get("diagonal_neighbour_weight", 1.0),
+                                                  step=1.0, format="%.1f",
+                                                  key='diagonal_weight',
+                                                  help="Weight for repeated diagonal neighbours.")
         corner_weight = st.sidebar.number_input("Corner Weight", 
-                                         value=settings["weights"]["corner_weight"], 
-                                         step=0.1, format="%.1f",
-                                         key='corner_weight', help="Weight for repeated corner seatings.")
+                                                value=settings["weights"]["corner_weight"], 
+                                                step=0.1, format="%.1f",
+                                                key='corner_weight',
+                                                help="Weight for repeated corner seatings.")
         gender_weight = st.sidebar.number_input("Gender Weight", 
-                                         value=settings["weights"]["gender_weight"], 
-                                         step=0.1, format="%.1f",
-                                         key='gender_weight', help="Weight for adjacent same-gender seats.")
+                                                value=settings["weights"]["gender_weight"], 
+                                                step=0.1, format="%.1f",
+                                                key='gender_weight',
+                                                help="Weight for adjacent same-gender seats.")
         fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", 
-                                        value=settings["weights"]["fixed_weight"], 
-                                        step=0.1, format="%.1f",
-                                        key='fixed_weight', help="Extra weight for fixed-seat persons.")
+                                               value=settings["weights"]["fixed_weight"], 
+                                               step=0.1, format="%.1f",
+                                               key='fixed_weight',
+                                               help="Extra weight for fixed-seat persons.")
         empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", 
-                                        value=settings["weights"]["empty_weight"], 
-                                        step=0.1, format="%.1f",
-                                        key='empty_weight', help="Weight for boundaries between empty and occupied seats.")
+                                               value=settings["weights"]["empty_weight"], 
+                                               step=0.1, format="%.1f",
+                                               key='empty_weight',
+                                               help="Weight for boundaries between empty and occupied seats.")
+        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", 
+                                                        value=settings["weights"].get("preferred_side_weight", 1.0),
+                                                        step=0.1, format="%.1f",
+                                                        key='preferred_side_weight',
+                                                        help="Penalty weight if a preferred side neighbour is missing.")
     else:
         side_weight = st.sidebar.number_input("Side Neighbour", value=5.0, step=1.0, format="%.1f",
-                                              key='side_weight', help="Weight for repeated side neighbours.")
+                                              key='side_weight',
+                                              help="Weight for repeated side neighbours.")
         front_weight = st.sidebar.number_input("Front Neighbour", value=2.0, step=1.0, format="%.1f",
-                                               key='front_weight', help="Weight for repeated front neighbours.")
+                                               key='front_weight',
+                                               help="Weight for repeated front neighbours.")
         diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", value=1.0, step=1.0, format="%.1f",
-                                                  key='diagonal_weight', help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner", value=3.0, step=0.1, format="%.1f",
-                                                key='corner_weight', help="Weight for repeated corner seatings.")
-        gender_weight = st.sidebar.number_input("Gender", value=5.0, step=0.1, format="%.1f",
-                                                key='gender_weight', help="Weight for adjacent same-gender seats.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", value=2.0, step=0.1, format="%.1f",
-                                               key='fixed_weight', help="Extra weight for fixed-seat persons.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering", value=5.0, step=0.1, format="%.1f",
-                                               key='empty_weight', help="Weight for boundaries between empty and occupied seats.")
+                                                  key='diagonal_weight',
+                                                  help="Weight for repeated diagonal neighbours.")
+        corner_weight = st.sidebar.number_input("Corner Weight", value=3.0, step=0.1, format="%.1f",
+                                                key='corner_weight',
+                                                help="Weight for repeated corner seatings.")
+        gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
+                                                key='gender_weight',
+                                                help="Weight for adjacent same-gender seats.")
+        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=2.0, step=0.1, format="%.1f",
+                                               key='fixed_weight',
+                                               help="Extra weight for fixed-seat persons.")
+        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=5.0, step=0.1, format="%.1f",
+                                               key='empty_weight',
+                                               help="Weight for boundaries between empty and occupied seats.")
+        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", value=1.0, step=0.1, format="%.1f",
+                                                        key='preferred_side_weight',
+                                                        help="Penalty weight if a preferred side neighbour is missing.")
     
     with st.sidebar.expander("Optimization Parameters", expanded=False):
         if "uploaded_settings" in st.session_state:
@@ -661,21 +742,27 @@ def main():
             iterations = st.number_input("Iterations", 
                                          value=settings["optimization_params"]["iterations"], 
                                          step=1000, min_value=1000,
-                                         key='iterations', help="Number of iterations for simulated annealing.")
+                                         key='iterations',
+                                         help="Number of iterations for simulated annealing.")
             initial_temp = st.number_input("Initial Temperature", 
                                            value=settings["optimization_params"]["initial_temp"], 
                                            step=1.0,
-                                           key='initial_temp', help="Starting temperature for simulated annealing.")
+                                           key='initial_temp',
+                                           help="Starting temperature for simulated annealing.")
             cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, 
                                      value=settings["optimization_params"]["cooling_rate"],
-                                     key='cooling_rate', help="Cooling multiplier per iteration.")
+                                     key='cooling_rate',
+                                     help="Cooling multiplier per iteration.")
         else:
             iterations = st.number_input("Iterations", value=20000, step=1000, min_value=1000,
-                                         key='iterations', help="Number of iterations for simulated annealing.")
+                                         key='iterations',
+                                         help="Number of iterations for simulated annealing.")
             initial_temp = st.number_input("Initial Temperature", value=10.0, step=1.0,
-                                           key='initial_temp', help="Starting temperature for simulated annealing.")
+                                           key='initial_temp',
+                                           help="Starting temperature for simulated annealing.")
             cooling_rate = st.slider("Cooling Rate", min_value=0.990, max_value=0.9999, value=0.9995,
-                                     key='cooling_rate', help="Cooling multiplier per iteration.")
+                                     key='cooling_rate',
+                                     help="Cooling multiplier per iteration.")
     
     run_button = st.sidebar.button("Run Optimization")
     
@@ -685,7 +772,8 @@ def main():
                 iterations, initial_temp, cooling_rate,
                 side_weight, front_weight, diagonal_weight,
                 corner_weight, gender_weight, fixed_weight, empty_weight,
-                people, person_genders, fixed_positions, TABLES
+                people, person_genders, fixed_positions, TABLES,
+                preferred_side_preferences, preferred_side_weight
             )
             st.session_state.best_assignments = best_assignments
             st.session_state.best_cost = best_cost
