@@ -1233,6 +1233,22 @@ def main():
         indiv_df = pd.DataFrame(indiv_data)
         st.dataframe(indiv_df, height=400)
     
+
+    
+    with st.expander("Overall Neighbour Summary"):
+        data = []
+        for person, types_dict in st.session_state.neighbors_info.items():
+            data.append({
+                "Person": person,
+                "Gender": st.session_state.person_genders.get(person, "X"),
+                "Side Neighbours": ", ".join(sorted(types_dict["side"])),
+                "Front Neighbours": ", ".join(sorted(types_dict["front"])),
+                "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
+                "Corner Count": st.session_state.corner_count.get(person, 0)
+            })
+        nbr_df = pd.DataFrame(data)
+        st.dataframe(nbr_df, height=400)
+
     with st.expander("Arrangements"):
         if hasattr(st.session_state, 'combined_df'):
             st.download_button(
@@ -1249,34 +1265,32 @@ def main():
             st.subheader(f"Table {table_letter}")
             st.dataframe(df, height=300)
     
-    with st.expander("Overall Neighbour Summary"):
-        data = []
-        for person, types_dict in st.session_state.neighbors_info.items():
-            data.append({
-                "Person": person,
-                "Gender": st.session_state.person_genders.get(person, "X"),
-                "Side Neighbours": ", ".join(sorted(types_dict["side"])),
-                "Front Neighbours": ", ".join(sorted(types_dict["front"])),
-                "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
-                "Corner Count": st.session_state.corner_count.get(person, 0)
-            })
-        nbr_df = pd.DataFrame(data)
-        st.dataframe(nbr_df, height=400)
-
-    st.header("Seat highlighting")
     if "best_assignments" in st.session_state and "neighbors_info" in st.session_state:
-        # Let the user select a person.
+        NONE = "Select person..."
+        # Add "None" option as the default
+        person_options = [NONE] + list(st.session_state.person_genders.keys())
         selected_person = st.selectbox(
-            "Select a person to highlight their seat and aggregated neighbours:",
-            list(st.session_state.person_genders.keys())
+            "Select a person to highlight their seat and neighbours (optional):",
+            person_options,
+            index=0  # Default to "None"
         )
-        # Use the aggregated neighbor summary (neighbors_info) for that person.
-        if selected_person in st.session_state.neighbors_info:
-            aggregated_neighbors = st.session_state.neighbors_info[selected_person]
+        
+        if selected_person == NONE:
+            # Display arrangements without highlighting
+            for round_index, arrangement in enumerate(st.session_state.best_assignments):
+                st.subheader(f"Arrangement {round_index+1}")
+                for table_id in sorted(TABLES.keys()):
+                    table_letter = TABLE_LETTERS[table_id]
+                    html = generate_table_html_with_highlights(arrangement, table_id, table_letter, TABLES, {})
+                    components.html(html, height=180, scrolling=False)
         else:
-            aggregated_neighbors = {"side": set(), "front": set(), "diagonal": set()}
-        display_highlighted_arrangements_by_names(selected_person, st.session_state.best_assignments,
-                                                TABLES, TABLE_LETTERS, aggregated_neighbors)
+            # Use the aggregated neighbor summary for highlighting
+            if selected_person in st.session_state.neighbors_info:
+                aggregated_neighbors = st.session_state.neighbors_info[selected_person]
+            else:
+                aggregated_neighbors = {"side": set(), "front": set(), "diagonal": set()}
+            display_highlighted_arrangements_by_names(selected_person, st.session_state.best_assignments,
+                                                    TABLES, TABLE_LETTERS, aggregated_neighbors)
     else:
         st.info("Run the optimization first to generate seating arrangements.")
 
