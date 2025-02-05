@@ -43,7 +43,7 @@ DEFAULT_FIXED_SEATS = """John: A2
 Mary: B2"""
 
 DEFAULT_PREFERRED_SIDE = """John: Linda, Karen"""
-DEFAULT_SPECIAL_COSTS = """John: 10"""
+DEFAULT_SPECIAL_COSTS = """John: 100"""
 
 # Weight Defaults
 DEFAULT_SIDE_WEIGHT = 5.0
@@ -421,16 +421,21 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
             penalty += corner_weight ** i
         indiv_breakdown[person]["corner_cost"] = penalty
 
-    # Preferred side neighbour cost per person.
-    if preferred_side_preferences is None:
-        preferred_side_preferences = {}
-    for round_assign in assignments:
-        for seat, person in round_assign.items():
-            if person in preferred_side_preferences:
-                desired = set(preferred_side_preferences[person])
-                side_nbrs = [round_assign[n_seat] for n_seat in seat_neighbors[seat]["side"]]
-                missing = sum(1 for d in desired if d not in side_nbrs)
-                indiv_breakdown[person]["preferred_side_cost"] += missing * preferred_side_weight
+    # Preferred side neighbour cost per person
+    for person in preferred_side_preferences:
+        if person_genders.get(person, "X") == "X":
+            continue
+        desired = set(preferred_side_preferences[person])
+        # Track which desired neighbors we've found
+        found_neighbors = set()
+        for round_assign in assignments:
+            for seat, seated_person in round_assign.items():
+                if seated_person == person:
+                    side_nbrs = set(round_assign[n_seat] for n_seat in seat_neighbors[seat]["side"])
+                    found_neighbors.update(desired & side_nbrs)
+        # Count how many desired neighbors were never found as side neighbors
+        missing = len(desired - found_neighbors)
+        indiv_breakdown[person]["preferred_side_cost"] = missing * preferred_side_weight
 
     # Gender cost: for each adjacent same-gender pair, attribute half cost to each person.
     for round_assign in assignments:
