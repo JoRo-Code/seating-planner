@@ -821,37 +821,37 @@ def main():
     """)
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
-        side_weight = st.sidebar.number_input("Side Neighbour Weight", 
+        side_weight = st.sidebar.number_input("Side Neighbour", 
                                               value=settings["weights"].get("side_neighbour_weight", DEFAULT_SIDE_WEIGHT),
                                               step=1.0, format="%.1f",
                                               key='side_weight',
                                               help="Weight for repeated side neighbours.")
-        front_weight = st.sidebar.number_input("Front Neighbour Weight", 
+        front_weight = st.sidebar.number_input("Front Neighbour", 
                                                value=settings["weights"].get("front_neighbour_weight", DEFAULT_FRONT_WEIGHT),
                                                step=1.0, format="%.1f",
                                                key='front_weight',
                                                help="Weight for repeated front neighbours.")
-        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour Weight", 
+        diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", 
                                                   value=settings["weights"].get("diagonal_neighbour_weight", DEFAULT_DIAGONAL_WEIGHT),
                                                   step=1.0, format="%.1f",
                                                   key='diagonal_weight',
                                                   help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner Weight", 
+        corner_weight = st.sidebar.number_input("Corner", 
                                                 value=settings["weights"]["corner_weight"], 
                                                 step=0.1, format="%.1f",
                                                 key='corner_weight',
                                                 help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
-        gender_weight = st.sidebar.number_input("Gender Weight", 
+        gender_weight = st.sidebar.number_input("Gender", 
                                                 value=settings["weights"]["gender_weight"], 
                                                 step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 help="Weight for adjacent same-gender seats.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", 
+        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", 
                                                value=settings["weights"]["fixed_weight"], 
                                                step=0.1, format="%.1f",
                                                key='fixed_weight',
                                                help="Extra weight for fixed-seat persons.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", 
+        empty_weight = st.sidebar.number_input("Empty Seat Clustering", 
                                                value=settings["weights"]["empty_weight"], 
                                                step=0.1, format="%.1f",
                                                key='empty_weight',
@@ -861,7 +861,7 @@ def main():
                                                         step=0.1, format="%.1f",
                                                         key='preferred_side_weight',
                                                         help="Penalty weight if a preferred side neighbour is missing.")
-        uniformity_weight = st.sidebar.number_input("Uniformity Weight", 
+        uniformity_weight = st.sidebar.number_input("Uniformity", 
                                                     value=settings["weights"].get("uniformity_weight", DEFAULT_UNIFORMITY_WEIGHT),
                                                     step=0.1, format="%.1f",
                                                     key='uniformity_weight',
@@ -876,22 +876,22 @@ def main():
         diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", value=DEFAULT_DIAGONAL_WEIGHT, step=1.0, format="%.1f",
                                                   key='diagonal_weight',
                                                   help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner Weight", value=DEFAULT_CORNER_WEIGHT, step=0.1, format="%.1f",
+        corner_weight = st.sidebar.number_input("Corner", value=DEFAULT_CORNER_WEIGHT, step=0.1, format="%.1f",
                                                 key='corner_weight',
                                                 help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
-        gender_weight = st.sidebar.number_input("Gender Weight", value=DEFAULT_GENDER_WEIGHT, step=0.1, format="%.1f",
+        gender_weight = st.sidebar.number_input("Gender", value=DEFAULT_GENDER_WEIGHT, step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 help="Weight for adjacent same-gender seats.")
-        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity Weight", value=DEFAULT_FIXED_WEIGHT, step=0.1, format="%.1f",
+        fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", value=DEFAULT_FIXED_WEIGHT, step=0.1, format="%.1f",
                                                key='fixed_weight',
                                                help="Extra weight for fixed-seat persons.")
-        empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", value=DEFAULT_EMPTY_WEIGHT, step=0.1, format="%.1f",
+        empty_weight = st.sidebar.number_input("Empty Seat Clustering", value=DEFAULT_EMPTY_WEIGHT, step=0.1, format="%.1f",
                                                key='empty_weight',
                                                help="Weight for boundaries between empty and occupied seats.")
-        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour Weight", value=DEFAULT_PREFERRED_SIDE_WEIGHT, step=0.1, format="%.1f",
+        preferred_side_weight = st.sidebar.number_input("Preferred Side Neighbour", value=DEFAULT_PREFERRED_SIDE_WEIGHT, step=0.1, format="%.1f",
                                                         key='preferred_side_weight',
                                                         help="Penalty weight if a preferred side neighbour is missing.")
-        uniformity_weight = st.sidebar.number_input("Uniformity Weight", value=DEFAULT_UNIFORMITY_WEIGHT, step=0.1, format="%.1f",
+        uniformity_weight = st.sidebar.number_input("Uniformity", value=DEFAULT_UNIFORMITY_WEIGHT, step=0.1, format="%.1f",
                                                     key='uniformity_weight',
                                                     help="Extra penalty for uneven distribution of individual costs.")
     
@@ -965,6 +965,30 @@ def main():
     
     st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
     
+    st.header("Cost Over Iterations")
+    cost_hist_df = pd.DataFrame(st.session_state.cost_history)
+    cost_hist_df = cost_hist_df.set_index("iteration")
+    # Now using keys that exist in our breakdown dictionary:
+    st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost", "variance"]])
+    
+    st.header("Individual Cost Breakdown")
+    indiv_data = []
+    for person, comp in st.session_state.indiv_costs.items():
+        indiv_data.append({
+            "Person": person,
+            "Side Cost": comp["side_cost"],
+            "Front Cost": comp["front_cost"],
+            "Diagonal Cost": comp["diagonal_cost"],
+            "Neighbor Cost": comp["neighbor_cost"],
+            "Corner Cost": comp["corner_cost"],
+            "Preferred Side Cost": comp["preferred_side_cost"],
+            "Gender Cost": comp["gender_cost"],
+            "Empty Cost": comp["empty_cost"],
+            "Total Cost": comp["total_cost"]
+        })
+    indiv_df = pd.DataFrame(indiv_data)
+    st.dataframe(indiv_df, height=400)
+    
     st.header("Seating Arrangements")
     st.download_button(
         label="Download All Seating Arrangements",
@@ -991,30 +1015,6 @@ def main():
         })
     nbr_df = pd.DataFrame(data)
     st.dataframe(nbr_df, height=400)
-    
-    st.header("Cost Over Iterations")
-    cost_hist_df = pd.DataFrame(st.session_state.cost_history)
-    cost_hist_df = cost_hist_df.set_index("iteration")
-    # Now using keys that exist in our breakdown dictionary:
-    st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost", "variance"]])
-    
-    st.header("Individual Cost Breakdown")
-    indiv_data = []
-    for person, comp in st.session_state.indiv_costs.items():
-        indiv_data.append({
-            "Person": person,
-            "Side Cost": comp["side_cost"],
-            "Front Cost": comp["front_cost"],
-            "Diagonal Cost": comp["diagonal_cost"],
-            "Neighbor Cost": comp["neighbor_cost"],
-            "Corner Cost": comp["corner_cost"],
-            "Preferred Side Cost": comp["preferred_side_cost"],
-            "Gender Cost": comp["gender_cost"],
-            "Empty Cost": comp["empty_cost"],
-            "Total Cost": comp["total_cost"]
-        })
-    indiv_df = pd.DataFrame(indiv_data)
-    st.dataframe(indiv_df, height=400)
 
 if __name__ == "__main__":
     if "__streamlitmagic__" not in locals():
