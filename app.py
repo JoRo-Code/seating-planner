@@ -201,14 +201,20 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                                                 "preferred_side_weight": preferred_side_weight})
     # Adjust each individual's cost by the special multiplier (default=1.0)
     adjusted_costs = {}
+    regular_costs = {}  # Track costs for persons without special multipliers
     for person in indiv:
         multiplier = special_cost_multipliers.get(person, 1.0)
-        adjusted_costs[person] = indiv[person]["total_cost"] * multiplier
+        cost = indiv[person]["total_cost"] * multiplier
+        adjusted_costs[person] = cost
+        if person not in special_cost_multipliers:
+            regular_costs[person] = cost
 
     overall_indiv_cost = sum(adjusted_costs.values())
-    if adjusted_costs:
-        avg_cost = overall_indiv_cost / len(adjusted_costs)
-        variance = sum((c - avg_cost) ** 2 for c in adjusted_costs.values()) / len(adjusted_costs)
+    
+    # Calculate variance only for persons without special multipliers
+    if regular_costs:
+        avg_regular_cost = sum(regular_costs.values()) / len(regular_costs)
+        variance = sum((c - avg_regular_cost) ** 2 for c in regular_costs.values()) / len(regular_costs)
     else:
         variance = 0
     uniformity_penalty = uniformity_weight * variance
