@@ -962,27 +962,12 @@ def generate_table_html(table_id, table_letter, tables):
         </style>
       </head>
       <body>
-        <h3 style="text-align:center;">Table {table_letter}</h3>
         {top_html}
         {bottom_html}
       </body>
     </html>
     """
     return full_html
-
-def display_table_layouts(tables, table_letters):
-    st.markdown("## Table Layouts")
-    st.markdown(
-        """
-        The following displays the seat numbering (blueprints) for each table.
-        For example, Table A's seats are labeled A1, A2, … etc.
-        Corner seats (first and last in each row) are highlighted in light red.
-        """
-    )
-    for table_id in sorted(tables.keys()):
-        table_letter = table_letters[table_id]
-        html = generate_table_html(table_id, table_letter, tables)
-        components.html(html, height=180, scrolling=False)
 
 #####################################
 # 8. Run Optimization & Build Data  #
@@ -1114,26 +1099,21 @@ def generate_table_html_with_highlights(arrangement, table_id, table_letter, tab
          "other" for front and diagonal neighbours.
     """
     num_cols = tables[table_id]
-    # Define common cell style and highlight colors.
     cell_style = (
         "width:60px; height:60px; border:1px solid #000; display:flex; "
-        "align-items:center; justify-content:center; margin:2px; font-size:12px; font-weight:bold;"
+        "align-items:center; justify-content:center; margin:1px; font-size:12px; font-weight:bold;"
     )
     highlight_colors = {
         "selected": "#FFD700",  # gold
         "side": "#90EE90",      # light green
         "other": "#ADD8E6"      # light blue
     }
-    
     def get_bg_color(row, col):
         seat = (table_id, row, col)
         if seat in highlights:
             return highlight_colors.get(highlights[seat], "#ffffff")
         else:
-            # Default background is now white for all seats.
             return "#ffffff"
-    
-    # Build the two rows: top row (row 0) and bottom row (row 1).
     top_html = "<div style='display:flex; justify-content:center;'>"
     for col in range(num_cols):
         seat = (table_id, 0, col)
@@ -1155,11 +1135,10 @@ def generate_table_html_with_highlights(arrangement, table_id, table_letter, tab
       <head>
         <meta charset="UTF-8">
         <style>
-          body {{ font-family: sans-serif; margin:10px; padding:0; }}
+          body {{ font-family: sans-serif; margin:5px; padding:0; }}
         </style>
       </head>
       <body>
-        <h4 style="text-align:center;">Table {table_letter}</h4>
         {top_html}
         {bottom_html}
       </body>
@@ -1212,9 +1191,8 @@ def display_highlighted_arrangements_by_names(selected_person, best_assignments,
                     highlights[seat] = "side"
                 elif occupant in other_neighbors:
                     highlights[seat] = "other"
-            st.markdown(f"**Table {table_letter}**")
             html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights)
-            components.html(html, height=180, scrolling=False)
+            components.html(html, height=150, scrolling=False)
 
 
 def display_highlighted_arrangements(selected_person, best_assignments, tables, table_letters, seat_neighbors):
@@ -1271,9 +1249,8 @@ def display_highlighted_arrangements(selected_person, best_assignments, tables, 
                     highlights[seat] = "side"
                 elif seat in global_other_neighbors:
                     highlights[seat] = "other"
-            st.markdown(f"**Table {table_letter}**")
             html = generate_table_html_with_highlights(arrangement, table_id, table_letter, tables, highlights)
-            components.html(html, height=180, scrolling=False)
+            components.html(html, height=120, scrolling=False)
 
 
 def main():
@@ -1313,7 +1290,7 @@ def main():
             for table_id in sorted(TABLES.keys()):
                 table_letter = TABLE_LETTERS[table_id]
                 html = generate_table_html(table_id, table_letter, TABLES)
-                components.html(html, height=180, scrolling=False)
+                components.html(html, height=150, scrolling=False)
         
         run_button = st.sidebar.button("Run Optimization", type="primary")
         
@@ -1691,7 +1668,7 @@ def main():
                 for table_id in sorted(TABLES.keys()):
                     table_letter = TABLE_LETTERS[table_id]
                     html = generate_table_html_with_highlights(arrangement, table_id, table_letter, TABLES, {})
-                    components.html(html, height=180, scrolling=False)
+                    components.html(html, height=150, scrolling=False)
         else:
             # Use the aggregated neighbor summary for highlighting
             if selected_person in st.session_state.neighbors_info:
