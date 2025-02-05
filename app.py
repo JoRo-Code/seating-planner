@@ -1630,6 +1630,7 @@ def main():
                 "Neighbor Cost": comp["neighbor_cost"],
                 "Corner Cost": comp["corner_cost"],
                 "Preferred Side Cost": comp["preferred_side_cost"],
+                "Excluded Neighbour Cost": comp["excluded_cost"],
                 "Gender Cost": comp["gender_cost"],
                 "Empty Cost": comp["empty_cost"],
                 "Total Cost": comp["total_cost"]
