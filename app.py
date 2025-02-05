@@ -95,7 +95,7 @@ def parse_preferred_side_neighbours(text):
 
 def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
                  side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
-                 corner_weight=3.0, multiple_corner_weight=10.0,  # NEW PARAMETER
+                 corner_weight=5.0,  # used as the exponential base for corner penalty
                  gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
                  preferred_side_preferences=None, preferred_side_weight=1.0,
                  breakdown=False):
@@ -104,15 +104,18 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
     
     Cost components:
       1. Neighbor cost: penalizes repeated neighbors.
-      2. Corner cost: penalizes repeated corner seatings.
-         For each person:
-           - Base penalty: (count - 1) * corner_weight.
-           - Extra penalty is applied only when count > 2: (count - 2) * multiple_corner_weight.
+      2. Corner cost (exponential): For each person, if they sit on a corner count times,
+         the penalty is calculated as: 
+            sum_{i=1}^{count} (corner_weight ** i)
+         For example, with a corner_weight of 5:
+            count = 1 --> penalty = 5
+            count = 2 --> penalty = 5 + 25 = 30
+            count = 3 --> penalty = 5 + 25 + 125 = 155
       3. Gender cost: adjacent same-gender pairs in a row.
       4. Empty seat clustering cost.
       5. Preferred side neighbour cost.
     
-    If breakdown is True, returns (total_cost, breakdown_dict).
+    If breakdown is True, returns (total_cost, breakdown_dict)
     """
     # --- Neighbor cost ---
     person_neighbors_by_type = defaultdict(lambda: {"side": [], "front": [], "diagonal": []})
@@ -138,24 +141,22 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
         diagonal_cost += multiplier * diagonal_weight * repeats_diag
     neighbor_cost = side_cost + front_cost + diagonal_cost
 
-    # --- Corner cost ---
+    # --- Corner cost (exponential) ---
     person_corner_counts = defaultdict(int)
     for round_assign in assignments:
         for seat, person in round_assign.items():
             t, row, col = seat
             if col == 0 or col == tables[t] - 1:
                 person_corner_counts[person] += 1
-    base_corner_cost = 0
-    extra_corner_penalty = 0
+    total_corner_cost = 0
     for person, count in person_corner_counts.items():
         if person_genders.get(person, "X") == "X":
             continue
-        if count > 1:
-            base_corner_cost += (count - 1)
-            # Only apply extra penalty if a person sits in a corner more than twice.
-            if count > 2:
-                extra_corner_penalty += (count - 2) * multiple_corner_weight
-    total_corner_cost = (corner_weight * base_corner_cost) + extra_corner_penalty
+        penalty = 0
+        # For each corner assignment, add an exponentially increasing penalty.
+        for i in range(1, count + 1):
+            penalty += corner_weight ** i
+        total_corner_cost += penalty
 
     # --- Gender cost ---
     gender_count = 0
@@ -184,7 +185,8 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                 for i in range(len(seats_in_row) - 1):
                     p1 = round_assign[seats_in_row[i]]
                     p2 = round_assign[seats_in_row[i+1]]
-                    if (p1.startswith("Empty") and not p2.startswith("Empty")) or (not p1.startswith("Empty") and p2.startswith("Empty")):
+                    if (p1.startswith("Empty") and not p2.startswith("Empty")) or \
+                       (not p1.startswith("Empty") and p2.startswith("Empty")):
                         empty_count += 1
     total_empty_cost = empty_weight * empty_count
 
@@ -210,8 +212,6 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
             "front_cost": front_cost,
             "diagonal_cost": diagonal_cost,
             "neighbor_cost": neighbor_cost,
-            "base_corner_cost": corner_weight * base_corner_cost,
-            "extra_corner_cost": extra_corner_penalty,
             "corner_cost": total_corner_cost,
             "gender_cost": total_gender_cost,
             "empty_cost": total_empty_cost,
@@ -262,7 +262,7 @@ def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
 def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, person_genders,
                          iterations=20000, initial_temp=10, cooling_rate=0.9995,
                          side_weight=1.0, front_weight=1.0, diagonal_weight=1.0,
-                         corner_weight=3.0, multiple_corner_weight=10.0,  # NEW PARAMETER
+                         corner_weight=5.0,  # exponential base for corner penalty
                          gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0,
                          preferred_side_preferences=None, preferred_side_weight=1.0,
                          record_history=True):
@@ -274,7 +274,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     if record_history:
         current_cost, current_breakdown = compute_cost(
             assignments, seat_neighbors, tables, person_genders, fixed_positions,
-            side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+            side_weight, front_weight, diagonal_weight, corner_weight,
             gender_weight, fixed_weight, empty_weight,
             preferred_side_preferences, preferred_side_weight,
             breakdown=True
@@ -282,7 +282,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
     else:
         current_cost = compute_cost(
             assignments, seat_neighbors, tables, person_genders, fixed_positions,
-            side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+            side_weight, front_weight, diagonal_weight, corner_weight,
             gender_weight, fixed_weight, empty_weight,
             preferred_side_preferences, preferred_side_weight,
             breakdown=False
@@ -309,7 +309,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
         if record_history:
             new_cost, new_breakdown = compute_cost(
                 assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+                side_weight, front_weight, diagonal_weight, corner_weight,
                 gender_weight, fixed_weight, empty_weight,
                 preferred_side_preferences, preferred_side_weight,
                 breakdown=True
@@ -317,7 +317,7 @@ def optimize_assignments(assignments, seat_neighbors, tables, fixed_positions, p
         else:
             new_cost = compute_cost(
                 assignments, seat_neighbors, tables, person_genders, fixed_positions,
-                side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+                side_weight, front_weight, diagonal_weight, corner_weight,
                 gender_weight, fixed_weight, empty_weight,
                 preferred_side_preferences, preferred_side_weight,
                 breakdown=False
@@ -352,13 +352,13 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
     The returned dict maps person -> dict with keys:
        side_cost, front_cost, diagonal_cost, neighbor_cost,
        corner_cost, preferred_side_cost, gender_cost, empty_cost, total_cost.
-       The corner_cost includes both the base penalty and extra penalty for multiple corners.
+       The corner_cost is computed exponentially: for count c,
+         penalty = sum_{i=1}^{c} (corner_weight ** i)
     """
     side_weight = weights.get("side_neighbour_weight", 1.0)
     front_weight = weights.get("front_neighbour_weight", 1.0)
     diagonal_weight = weights.get("diagonal_neighbour_weight", 1.0)
-    corner_weight = weights.get("corner_weight", 3.0)
-    multiple_corner_weight = weights.get("multiple_corner_weight", 10.0)  # NEW PARAMETER
+    corner_weight = weights.get("corner_weight", 5.0)
     gender_weight = weights.get("gender_weight", 5.0)
     fixed_weight = weights.get("fixed_weight", 2.0)
     empty_weight = weights.get("empty_weight", 5.0)
@@ -409,12 +409,10 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
     for person, count in corner_count.items():
         if person_genders.get(person, "X") == "X":
             continue
-        if count > 1:
-            base_cost = (count - 1) * corner_weight
-            extra_cost = 0
-            if count > 2:
-                extra_cost = (count - 2) * multiple_corner_weight
-            indiv_breakdown[person]["corner_cost"] = base_cost + extra_cost
+        penalty = 0
+        for i in range(1, count + 1):
+            penalty += corner_weight ** i
+        indiv_breakdown[person]["corner_cost"] = penalty
 
     # Preferred side neighbour cost per person.
     if preferred_side_preferences is None:
@@ -442,7 +440,6 @@ def compute_individual_cost_breakdown(assignments, seat_neighbors, tables, perso
                     if g1 == g2:
                         indiv_breakdown[p1]["gender_cost"] += gender_weight / 2
                         indiv_breakdown[p2]["gender_cost"] += gender_weight / 2
-
     # Empty cost: for each adjacent pair where one is empty and one is not, assign cost to the non-empty person.
     for round_assign in assignments:
         for t, seats_per_side in tables.items():
@@ -578,7 +575,7 @@ def display_table_layouts(tables, table_letters):
 
 def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
                                       side_weight, front_weight, diagonal_weight,
-                                      corner_weight, multiple_corner_weight,  # NEW PARAMETER
+                                      corner_weight,  # exponential base for corner penalty
                                       gender_weight, fixed_weight, empty_weight,
                                       people, person_genders, fixed_positions, tables,
                                       preferred_side_preferences, preferred_side_weight):
@@ -606,7 +603,7 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     best_assignments, best_cost, cost_history = optimize_assignments(
         assignments, seat_neighbors, tables, fixed_positions, person_genders,
         iterations, initial_temp, cooling_rate,
-        side_weight, front_weight, diagonal_weight, corner_weight, multiple_corner_weight,
+        side_weight, front_weight, diagonal_weight, corner_weight,
         gender_weight, fixed_weight, empty_weight,
         preferred_side_preferences, preferred_side_weight,
         record_history=True
@@ -649,8 +646,8 @@ def get_current_settings():
     side_weight = st.session_state.side_weight if 'side_weight' in st.session_state else 1.0
     front_weight = st.session_state.front_weight if 'front_weight' in st.session_state else 1.0
     diagonal_weight = st.session_state.diagonal_weight if 'diagonal_weight' in st.session_state else 1.0
-    corner_weight = st.session_state.corner_weight if 'corner_weight' in st.session_state else 3.0
-    multiple_corner_weight = st.session_state.multiple_corner_weight if 'multiple_corner_weight' in st.session_state else 10.0
+    # Now, "Corner Weight" is used as the exponential base.
+    corner_weight = st.session_state.corner_weight if 'corner_weight' in st.session_state else 5.0
     gender_weight = st.session_state.gender_weight if 'gender_weight' in st.session_state else 5.0
     fixed_weight = st.session_state.fixed_weight if 'fixed_weight' in st.session_state else 2.0
     empty_weight = st.session_state.empty_weight if 'empty_weight' in st.session_state else 5.0
@@ -672,7 +669,6 @@ def get_current_settings():
             "front_neighbour_weight": front_weight,
             "diagonal_neighbour_weight": diagonal_weight,
             "corner_weight": corner_weight,
-            "multiple_corner_weight": multiple_corner_weight,
             "gender_weight": gender_weight,
             "fixed_weight": fixed_weight,
             "empty_weight": empty_weight,
@@ -810,16 +806,12 @@ def main():
                                                   step=1.0, format="%.1f",
                                                   key='diagonal_weight',
                                                   help="Weight for repeated diagonal neighbours.")
+        # This "Corner Weight" now serves as the exponential base.
         corner_weight = st.sidebar.number_input("Corner Weight", 
                                                 value=settings["weights"]["corner_weight"], 
                                                 step=0.1, format="%.1f",
                                                 key='corner_weight',
-                                                help="Base penalty for each extra corner (after the first).")
-        multiple_corner_weight = st.sidebar.number_input("Multiple Corner Weight", 
-                                                         value=settings["weights"].get("multiple_corner_weight", 10.0),
-                                                         step=0.1, format="%.1f",
-                                                         key='multiple_corner_weight',
-                                                         help="Extra penalty for each additional corner beyond two.")
+                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
         gender_weight = st.sidebar.number_input("Gender Weight", 
                                                 value=settings["weights"]["gender_weight"], 
                                                 step=0.1, format="%.1f",
@@ -850,12 +842,9 @@ def main():
         diagonal_weight = st.sidebar.number_input("Diagonal Neighbour", value=1.0, step=1.0, format="%.1f",
                                                   key='diagonal_weight',
                                                   help="Weight for repeated diagonal neighbours.")
-        corner_weight = st.sidebar.number_input("Corner Weight", value=3.0, step=0.1, format="%.1f",
+        corner_weight = st.sidebar.number_input("Corner Weight", value=5.0, step=0.1, format="%.1f",
                                                 key='corner_weight',
-                                                help="Base penalty for each extra corner (after the first).")
-        multiple_corner_weight = st.sidebar.number_input("Multiple Corner Weight", value=10.0, step=0.1, format="%.1f",
-                                                         key='multiple_corner_weight',
-                                                         help="Extra penalty for each additional corner beyond two.")
+                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
         gender_weight = st.sidebar.number_input("Gender Weight", value=5.0, step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 help="Weight for adjacent same-gender seats.")
@@ -904,7 +893,7 @@ def main():
             best_assignments, best_cost, neighbors_info, corner_count, cost_history = run_optimization_and_build_data(
                 iterations, initial_temp, cooling_rate,
                 side_weight, front_weight, diagonal_weight,
-                corner_weight, multiple_corner_weight,  # NEW PARAMETER
+                corner_weight,  # exponential base for corner penalty
                 gender_weight, fixed_weight, empty_weight,
                 people, person_genders, fixed_positions, TABLES,
                 preferred_side_preferences, preferred_side_weight
@@ -924,7 +913,6 @@ def main():
                 "front_neighbour_weight": front_weight,
                 "diagonal_neighbour_weight": diagonal_weight,
                 "corner_weight": corner_weight,
-                "multiple_corner_weight": multiple_corner_weight,
                 "gender_weight": gender_weight,
                 "fixed_weight": fixed_weight,
                 "empty_weight": empty_weight,
