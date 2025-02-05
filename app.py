@@ -8,14 +8,6 @@ import copy
 from collections import defaultdict
 import json
 
-import streamlit as st
-import streamlit.components.v1 as components
-import pandas as pd
-import random
-import math
-import copy
-from collections import defaultdict
-
 #####################################
 # 1. Table Definitions & Utilities  #
 #####################################
@@ -71,34 +63,43 @@ def generate_seats(tables):
 
 def compute_seat_neighbors(tables):
     """
-    For each seat, computes a list of neighboring seats.
-    Neighbors are:
-      - Immediate left/right in the same row.
-      - In the opposite row: directly across plus the adjacent left/right.
-    Returns a dictionary mapping seat -> list of seats.
+    For each seat, computes its three types of neighbouring seats.
+    
+    Returns a dictionary mapping seat -> dictionary with keys:
+      - "side": seats immediately to the left and right (same row)
+      - "front": seat directly opposite (other row, same column)
+      - "diagonal": seats in the opposite row to the left and right.
+    
+    For example, if a seat is at (t, row, col), then:
+      - Side: (t, row, col-1) and (t, row, col+1) if they exist.
+      - Front: (t, 1-row, col)
+      - Diagonal: (t, 1-row, col-1) and (t, 1-row, col+1) if they exist.
     """
     seat_neighbors = {}
     for t, seats_per_side in tables.items():
         for row in [0, 1]:
             for col in range(seats_per_side):
                 s = (t, row, col)
-                neighbors = []
+                neighbors = {
+                    "side": [],
+                    "front": [],
+                    "diagonal": []
+                }
+                # Side neighbours (left and right in the same row)
                 if col - 1 >= 0:
-                    neighbors.append((t, row, col - 1))
+                    neighbors["side"].append((t, row, col - 1))
                 if col + 1 < seats_per_side:
-                    neighbors.append((t, row, col + 1))
+                    neighbors["side"].append((t, row, col + 1))
+                # Front neighbour (directly opposite)
                 other = 1 - row
-                neighbors.append((t, other, col))
+                neighbors["front"].append((t, other, col))
+                # Diagonal neighbours (in opposite row and one column left/right)
                 if col - 1 >= 0:
-                    neighbors.append((t, other, col - 1))
+                    neighbors["diagonal"].append((t, other, col - 1))
                 if col + 1 < seats_per_side:
-                    neighbors.append((t, other, col + 1))
+                    neighbors["diagonal"].append((t, other, col + 1))
                 seat_neighbors[s] = neighbors
     return seat_neighbors
-
-#####################################
-# 3. Optimization Functions          #
-#####################################
 
 def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_positions,
                  neighbor_weight=1.0, corner_weight=3.0, gender_weight=5.0, fixed_weight=2.0, empty_weight=5.0):
@@ -107,7 +108,7 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
     
     Cost components:
     1. **Neighbor Cost:** For each person (except those with neutral gender "X")
-       the cost is (total neighbors encountered over rounds – number of unique neighbors).
+       the cost is (total neighbours encountered over rounds – number of unique neighbours).
        For fixed-seat persons, the cost is multiplied by fixed_weight.
     2. **Corner Cost:** For each person, if they sit in a corner (column 0 or last column)
        more than once, add (count - 1).
@@ -124,11 +125,14 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
     for round_assign in assignments:
         for seat, person in round_assign.items():
             t, row, col = seat
+            # Check if seat is a corner (first or last column)
             if col == 0 or col == tables[t] - 1:
                 person_corner_counts[person] += 1
-            for n_seat in seat_neighbors[seat]:
-                neighbor_person = round_assign[n_seat]
-                person_neighbors[person].append(neighbor_person)
+            # Now go through each neighbour type (side, front, diagonal)
+            for neighbor_list in seat_neighbors[seat].values():
+                for n_seat in neighbor_list:
+                    neighbor_person = round_assign[n_seat]
+                    person_neighbors[person].append(neighbor_person)
                 
     neighbor_cost = 0
     for person, neighs in person_neighbors.items():
@@ -178,15 +182,34 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
                   empty_weight * empty_cost)
     return total_cost
 
-def get_neighbors_info(assignments, seat_neighbors, tables):
-    """Returns a dictionary mapping each person to the set of unique neighbors over all rounds."""
-    person_neighbors = defaultdict(set)
+def get_neighbors_info_by_type(assignments, seat_neighbors, tables):
+    """
+    Returns a dictionary mapping each person to a dictionary of neighbour types
+    and a separate dictionary of corner counts.
+    
+    For each person, the neighbour types are collected over all rounds:
+      - "side": set of persons who sat to their immediate left/right.
+      - "front": set of persons who sat directly in front.
+      - "diagonal": set of persons who sat diagonally in front.
+    
+    Also returns corner_count: a dict mapping person -> number of rounds that person sat at a corner.
+    """
+    person_neighbors = defaultdict(lambda: {"side": set(), "front": set(), "diagonal": set()})
+    corner_count = defaultdict(int)
     for round_assign in assignments:
         for seat, person in round_assign.items():
-            for n_seat in seat_neighbors[seat]:
-                neighbor_person = round_assign[n_seat]
-                person_neighbors[person].add(neighbor_person)
-    return person_neighbors
+            t, row, col = seat
+            if col == 0 or col == tables[t] - 1:
+                corner_count[person] += 1
+            for n_type, neighbor_list in seat_neighbors[seat].items():
+                for n_seat in neighbor_list:
+                    neighbor_person = round_assign[n_seat]
+                    person_neighbors[person][n_type].add(neighbor_person)
+    return person_neighbors, corner_count
+
+#####################################
+# 3. Optimization Functions          #
+#####################################
 
 def initialize_assignments(people, tables, fixed_positions, num_rounds=3):
     """
@@ -384,7 +407,9 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
     Runs the seating optimization and returns:
       - best_assignments: list (per round) of seat -> person assignments,
       - best_cost: final cost,
-      - neighbors_info: dict mapping each person to their overall set of neighbors.
+      - neighbors_info: dict mapping each person to a dict of neighbour types,
+      - corner_count: dict mapping each person to the number of rounds they sat at a corner.
+    
     If there are fewer names than seats, fills remaining seats with "Empty" (gender "X").
     """
     total_seats = sum(2 * seats for seats in tables.values())
@@ -402,8 +427,8 @@ def run_optimization_and_build_data(iterations, initial_temp, cooling_rate,
                                                        fixed_positions, person_genders,
                                                        iterations, initial_temp, cooling_rate,
                                                        neighbor_weight, corner_weight, gender_weight, fixed_weight, empty_weight)
-    neighbors_info = get_neighbors_info(best_assignments, seat_neighbors, tables)
-    return best_assignments, best_cost, neighbors_info
+    neighbors_info, corner_count = get_neighbors_info_by_type(best_assignments, seat_neighbors, tables)
+    return best_assignments, best_cost, neighbors_info, corner_count
 
 def combine_all_seating_dataframes(assignments, tables, table_letters):
     """
@@ -481,7 +506,6 @@ def main():
     st.markdown("##### Optimizing seating arrangements for events.")
     st.markdown("###### Use sidebar for additional customization")
 
-    
     # Add download button in the sidebar at the top
     st.sidebar.markdown("# Settings")
     
@@ -537,7 +561,6 @@ def main():
     global TABLES, TABLE_LETTERS
     TABLES, TABLE_LETTERS = parse_table_definitions(table_def_text)
         
-
     with col2:
         # Show table layouts inline
         st.markdown(
@@ -600,13 +623,11 @@ def main():
                                           help="Meaning, John will be seated at table A, seat 12. Each line should be in the format 'Name: Seat' (e.g., 'John: A12'). Ensure that the seat exists in the overview.")
     fixed_positions = parse_fixed_seats(fixed_text)
     
-
     st.sidebar.header("Conditions")
     st.sidebar.markdown("""
         Importance of a condition. The accumulative sum of all conditions is optimized to be as low as possible. HIGHER more important. 
     """)
     
-
     if "uploaded_settings" in st.session_state:
         settings = st.session_state.uploaded_settings
         neighbor_weight = st.sidebar.number_input("Neighbor Weight", 
@@ -614,7 +635,7 @@ def main():
                                              step=0.1, format="%.1f",
                                              key='neighbor_weight',
                                              on_change=lambda: None,
-                                             help="Weight for penalizing repeated neighbors. Higher values force more neighbor diversity.")
+                                             help="Weight for penalizing repeated neighbours. Higher values force more neighbour diversity.")
         corner_weight = st.sidebar.number_input("Corner Weight", 
                                            value=settings["weights"]["corner_weight"], 
                                            step=0.1, format="%.1f",
@@ -632,7 +653,7 @@ def main():
                                           step=0.1, format="%.1f",
                                           key='fixed_weight',
                                           on_change=lambda: None,
-                                          help="Extra weight applied to fixed-seat persons to encourage diverse neighbors.")
+                                          help="Extra weight applied to fixed-seat persons to encourage diverse neighbours.")
         empty_weight = st.sidebar.number_input("Empty Seat Clustering Weight", 
                                           value=settings["weights"]["empty_weight"], 
                                           step=0.1, format="%.1f",
@@ -643,7 +664,7 @@ def main():
         neighbor_weight = st.sidebar.number_input("Neighbor", value=1.0, step=0.1, format="%.1f",
                                                   key='neighbor_weight',
                                                   on_change=lambda: None,
-                                                  help="Weight for penalizing repeated neighbors. Higher values force more neighbor diversity.")
+                                                  help="Weight for penalizing repeated neighbours. Higher values force more neighbour diversity.")
         corner_weight = st.sidebar.number_input("Corner", value=3.0, step=0.1, format="%.1f",
                                                 key='corner_weight',
                                                 on_change=lambda: None,
@@ -655,7 +676,7 @@ def main():
         fixed_weight = st.sidebar.number_input("Fixed Seat Diversity", value=2.0, step=0.1, format="%.1f",
                                                key='fixed_weight',
                                                on_change=lambda: None,
-                                               help="Extra weight applied to fixed-seat persons to encourage diverse neighbors.")
+                                               help="Extra weight applied to fixed-seat persons to encourage diverse neighbours.")
         empty_weight = st.sidebar.number_input("Empty Seat Clustering", value=5.0, step=0.1, format="%.1f",
                                                key='empty_weight',
                                                on_change=lambda: None,
@@ -700,7 +721,7 @@ def main():
     
     if run_button or "best_assignments" not in st.session_state:
         with st.spinner("Running optimization..."):
-            best_assignments, best_cost, neighbors_info = run_optimization_and_build_data(
+            best_assignments, best_cost, neighbors_info, corner_count = run_optimization_and_build_data(
                 iterations, initial_temp, cooling_rate,
                 neighbor_weight, corner_weight, gender_weight, fixed_weight, empty_weight,
                 people, person_genders, fixed_positions, TABLES
@@ -708,6 +729,7 @@ def main():
             st.session_state.best_assignments = best_assignments
             st.session_state.best_cost = best_cost
             st.session_state.neighbors_info = neighbors_info
+            st.session_state.corner_count = corner_count
             st.session_state.person_genders = person_genders
             
             # Create combined DataFrame and store in session state
@@ -716,8 +738,6 @@ def main():
     
     st.success(f"Optimization complete. Best cost: {st.session_state.best_cost}")
     
-
-
     st.header("Seating Arrangements")
     # Add download button for combined seating arrangements
     st.download_button(
@@ -733,12 +753,19 @@ def main():
         st.dataframe(df, height=300)
     
     st.header("Overall Neighbour Summary")
+    # Build a DataFrame with separate columns for each neighbour type and corner counts.
     data = []
-    for person, neighbours in st.session_state.neighbors_info.items():
-        data.append((person, st.session_state.person_genders.get(person, "X"), ", ".join(sorted(neighbours))))
-    nbr_df = pd.DataFrame(data, columns=["Person", "Gender", "Neighbours"])
+    for person, types_dict in st.session_state.neighbors_info.items():
+        data.append({
+            "Person": person,
+            "Gender": st.session_state.person_genders.get(person, "X"),
+            "Side Neighbours": ", ".join(sorted(types_dict["side"])),
+            "Front Neighbours": ", ".join(sorted(types_dict["front"])),
+            "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
+            "Corner Count": st.session_state.corner_count.get(person, 0)
+        })
+    nbr_df = pd.DataFrame(data)
     st.dataframe(nbr_df, height=400)
-
 
 if __name__ == "__main__":
     if "__streamlitmagic__" not in locals():
