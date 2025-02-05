@@ -211,20 +211,27 @@ def compute_cost(assignments, seat_neighbors, tables, person_genders, fixed_posi
 
     overall_indiv_cost = sum(adjusted_costs.values())
     
-    # Calculate variance only for persons without special multipliers
+    # Calculate uniformity penalty based on the range and standard deviation
     if regular_costs:
-        avg_regular_cost = sum(regular_costs.values()) / len(regular_costs)
-        variance = sum((c - avg_regular_cost) ** 2 for c in regular_costs.values()) / len(regular_costs)
+        costs = list(regular_costs.values())
+        avg_cost = sum(costs) / len(costs)
+        
+        # Calculate penalties for deviations from average
+        squared_deviations = [(c - avg_cost) ** 2 for c in costs]
+        max_deviation = max(abs(c - avg_cost) for c in costs)
+        
+        # Use exponential penalty for large deviations
+        exp_penalty = sum(math.exp(abs(c - avg_cost) / avg_cost) for c in costs)
+        
+        uniformity_penalty = uniformity_weight * (sum(squared_deviations) + max_deviation + exp_penalty)
     else:
-        variance = 0
-    uniformity_penalty = uniformity_weight * variance
+        uniformity_penalty = 0
 
     total_cost = overall_indiv_cost + uniformity_penalty
 
     if breakdown:
         breakdown_dict = {
             "overall_indiv_cost": overall_indiv_cost,
-            "variance": variance,
             "uniformity_cost": uniformity_penalty,
             "total_cost": total_cost,
             "adjusted_individual_costs": adjusted_costs
@@ -850,7 +857,7 @@ def main():
                                                 value=settings["weights"]["corner_weight"], 
                                                 step=0.1, format="%.1f",
                                                 key='corner_weight',
-                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
+                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125. Thus if two corners, the cost is 5+25=30.")
         gender_weight = st.sidebar.number_input("Gender", 
                                                 value=settings["weights"]["gender_weight"], 
                                                 step=0.1, format="%.1f",
@@ -888,7 +895,7 @@ def main():
                                                   help="Weight for repeated diagonal neighbours.")
         corner_weight = st.sidebar.number_input("Corner", value=DEFAULT_CORNER_WEIGHT, step=0.1, format="%.1f",
                                                 key='corner_weight',
-                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125.")
+                                                help="Exponential base for corner penalty. For example, if 5 then first corner costs 5, second 25, third 125. Thus if two corners, the cost is 5+25=30.")
         gender_weight = st.sidebar.number_input("Gender", value=DEFAULT_GENDER_WEIGHT, step=0.1, format="%.1f",
                                                 key='gender_weight',
                                                 help="Weight for adjacent same-gender seats.")
@@ -990,7 +997,7 @@ def main():
     cost_hist_df = pd.DataFrame(st.session_state.cost_history)
     cost_hist_df = cost_hist_df.set_index("iteration")
     # Now using keys that exist in our breakdown dictionary:
-    st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost", "variance"]])
+    st.line_chart(cost_hist_df[["total_cost", "overall_indiv_cost", "uniformity_cost" ]])
     
     st.header("Individual Cost Breakdown")
     indiv_data = []
