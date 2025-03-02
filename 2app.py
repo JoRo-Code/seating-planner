@@ -371,6 +371,51 @@ def run_optimization(tables, guests, num_rounds=3, locked_seats_per_round=None, 
         
     return arrangements
 
+def set_fixed_assignments():
+    with st.sidebar.expander("Fixed Assignments"):
+        st.markdown("""
+            Specify fixed seat assignments for specific rounds.
+            Format: Round#:SeatID:Name (e.g., 1:A1:Johan)
+        """)
+        
+        if "uploaded_settings" in st.session_state:
+            settings = st.session_state.uploaded_settings
+            fixed_assignments_text = st.text_area(
+                "Fixed Assignments", 
+                value=get_setting(settings, Settings.FIXED_ASSIGNMENTS),
+                height=150,
+                key='fixed_assignments_text',
+                help="Format: Round#:SeatID:Name (e.g., 1:A1:Johan)"
+            )
+        else:
+            fixed_assignments_text = st.text_area(
+                "Fixed Assignments", 
+                value=get_setting(DEFAULT_SETTINGS, Settings.FIXED_ASSIGNMENTS),
+                height=150,
+                key='fixed_assignments_text',
+                help="Format: Round#:SeatID:Name (e.g., 1:A1:Johan)"
+            )
+        
+        # Parse fixed assignments
+        locked_seats_per_round = defaultdict(dict)
+        for line in fixed_assignments_text.strip().splitlines():
+            if not line.strip():
+                continue
+            try:
+                parts = line.split(":")
+                if len(parts) == 3:
+                    round_num, seat_id, name = parts
+                    round_idx = int(round_num.strip()) - 1  # Convert to 0-based index
+                    seat_id = seat_id.strip().upper()
+                    name = name.strip()
+                    # Check if this seat is already assigned for this round
+                    if seat_id in locked_seats_per_round[round_idx]:
+                        st.warning(f"Seat {seat_id} in round {round_num} is assigned multiple times. Last assignment will be used.")
+                    locked_seats_per_round[round_idx][seat_id] = name
+            except Exception:
+                st.error(f"Error parsing line: {line}")
+        
+        st.session_state.locked_seats_per_round = dict(locked_seats_per_round)
 
 def main():
     st.set_page_config(layout="wide")
@@ -381,6 +426,8 @@ def main():
 
     set_guests()
     
+    set_fixed_assignments()
+    
     TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state.table_definitions)
 
     guests = st.session_state.guests
@@ -390,9 +437,7 @@ def main():
         num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=5, value=3, step=1)
 
     # Generate arrangements
-    locked_seats_per_round = {
-        0: {"A1": "Johan", "A2": "Ludmilla"},
-    }
+    locked_seats_per_round = st.session_state.locked_seats_per_round if hasattr(st.session_state, 'locked_seats_per_round') else {}
     arrangements = run_optimization(TABLES, guests, num_rounds, locked_seats_per_round, table_letters=TABLE_LETTERS)
     
     show_arrangements(arrangements, TABLES, TABLE_LETTERS)
