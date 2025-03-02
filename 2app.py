@@ -25,6 +25,35 @@ DEFAULT_SETTINGS = json.load(open("default_settings.json", "r", encoding="utf-8"
 
 ##### 
 
+def compute_seat_neighbors(tables):
+    seat_neighbors = {}
+    for t, seats_per_side in tables.items():
+        for row in [0, 1]:
+            for col in range(seats_per_side):
+                s = (t, row, col)
+                neighbors = {
+                    "side": [],
+                    "front": [],
+                    "diagonal": [],
+                    "all": []
+                }
+                # Side neighbours
+                if col - 1 >= 0:
+                    neighbors["side"].append((t, row, col - 1))
+                if col + 1 < seats_per_side:
+                    neighbors["side"].append((t, row, col + 1))
+                # Front neighbour (directly opposite)
+                other = 1 - row
+                neighbors["front"].append((t, other, col))
+                # Diagonal neighbours
+                if col - 1 >= 0:
+                    neighbors["diagonal"].append((t, other, col - 1))
+                if col + 1 < seats_per_side:
+                    neighbors["diagonal"].append((t, other, col + 1))
+                seat_neighbors[s] = neighbors
+                neighbors["all"] = neighbors["side"] + neighbors["front"] + neighbors["diagonal"]
+    return seat_neighbors
+
 def parse_table_definitions(text):
     lines = text.strip().splitlines()
     tables_list = []
@@ -356,40 +385,52 @@ def seat_label_to_tuple(seat_label, TABLES, TABLE_LETTERS):
             return (table_id, row, col)
     return None
 
-def run_optimization(tables, guests, num_rounds=3, locked_seats_per_round=None, table_letters=None):
+def run_optimization(tables, guests, num_rounds=3, locked_seats_per_round=None, table_letters=None, 
+                    previous_arrangements=None, person_genders=None, preferred_neighbors=None, 
+                    excluded_neighbors=None, max_iterations=1000):
     """
     Args:
         tables: {table_id: seats_per_side}
         guests: list of guest names
         num_rounds: number of rounds
-        locked_seats_per_round:
+        locked_seats_per_round: {round_index: {seat_label: guest_name}}
+        previous_arrangements: list of previous arrangements to build upon
+        person_genders: {guest_name: "M"/"F"} for gender-alternating seating
+        preferred_neighbors: {guest_name: [preferred_guest_names]}
+        excluded_neighbors: {guest_name: [excluded_guest_names]}
+        max_iterations: maximum number of optimization iterations
     Returns:
         [{(table_id, row, col): guest_name}]
     """
-    # Generate all seats
+    # Generate all seats and compute neighbors
     seats = generate_seats(tables)
+    seat_neighbors = compute_seat_neighbors(tables)
     
-    # Generate random arrangements
+    # Initialize arrangements
     arrangements = []
+    if previous_arrangements:
+        # Start with previous arrangements if provided
+        arrangements = copy.deepcopy(previous_arrangements)
+        # Only generate additional rounds if needed
+        num_rounds = max(0, num_rounds - len(arrangements))
     
+    # Generate initial arrangements for new rounds
     for round_index in range(num_rounds):
+        # Initialize with locked seats
         arrangement = {}
-        # First, if there are locked seats for this round, place them.
         if locked_seats_per_round and round_index in locked_seats_per_round:
-            locked_assignments = locked_seats_per_round[round_index]  # e.g., {"A1": "Johan", "A2": "Ludmilla"}
+            locked_assignments = locked_seats_per_round[round_index]
             for seat_label, guest in locked_assignments.items():
                 seat_tuple = seat_label_to_tuple(seat_label, tables, table_letters)
                 if seat_tuple:
                     arrangement[seat_tuple] = guest
-    
-        # remove locked guests
+        
+        # Get locked guests and available guests
         locked_guests = set(arrangement.values())
         available_guests = [g for g in guests if g not in locked_guests]
         
-        # place remaining guests
+        # Initial random placement
         random.shuffle(available_guests)
-
-        # Fill in the remaining seats with the available guests.
         for seat in seats:
             if seat not in arrangement:
                 if available_guests:
@@ -398,8 +439,569 @@ def run_optimization(tables, guests, num_rounds=3, locked_seats_per_round=None, 
                     break
         
         arrangements.append(arrangement)
-        
+    
+    # Now optimize all arrangements together
+    if max_iterations > 0:
+        arrangements = optimize_all_arrangements(
+            arrangements, 
+            seats, 
+            tables,
+            table_letters,
+            seat_neighbors, 
+            person_genders, 
+            preferred_neighbors, 
+            excluded_neighbors,
+            locked_seats_per_round,
+            max_iterations
+        )
+    
     return arrangements
+
+def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_neighbors, person_genders, 
+                             preferred_neighbors, excluded_neighbors, locked_seats_per_round,
+                             max_iterations):
+    """
+    Optimize all seating arrangements together, considering:
+    1. Alternating male/female within each arrangement
+    2. Preferred neighbors within each arrangement
+    3. Excluded neighbors within each arrangement
+    4. Avoiding repeat neighbors across different arrangements
+    
+    Uses a local search algorithm with random swaps and flips.
+    """
+    # Weights for different optimization criteria
+    GENDER_ALTERNATION_WEIGHT = 15  # Weight for gender alternation
+    PREFERRED_NEIGHBOR_WEIGHT = 20  # Weight for preferred neighbors
+    EXCLUDED_NEIGHBOR_WEIGHT = 50   # Weight for excluded neighbors
+    REPEAT_NEIGHBOR_WEIGHT = 15     # Weight for repeat neighbors across rounds
+    
+    # Create reverse mappings from person to seat for each arrangement
+    person_to_seat_by_round = []
+    for arrangement in arrangements:
+        person_to_seat = {person: seat for seat, person in arrangement.items()}
+        person_to_seat_by_round.append(person_to_seat)
+    
+    # Create a placeholder for the progress chart
+    progress_chart = st.empty()
+    
+    # Create containers for detailed cost breakdown
+    cost_breakdown = st.expander("Cost Function Breakdown", expanded=False)
+    
+    # Create container for problematic guests (only used at the end)
+    problematic_guests = st.expander("Problematic Guests", expanded=False)
+    
+    # Lists to track progress
+    iterations = []
+    best_scores = []  # Only track best scores
+    component_scores = {
+        "Gender Alternation": [],
+        "Preferred Neighbors": [],
+        "Excluded Neighbors": [],
+        "Repeat Neighbors": []
+    }
+    
+    # Define the scoring function for all arrangements
+    def score_all_arrangements(collect_components=False, arrangements_to_score=None, track_guest_costs=False):
+        if arrangements_to_score is None:
+            arrangements_to_score = arrangements
+            
+        total_score = 0
+        
+        # Component scores if we're collecting them
+        gender_score = 0
+        preferred_score = 0
+        excluded_score = 0
+        repeat_score = 0
+        
+        # Track costs per guest if requested
+        guest_costs = defaultdict(lambda: defaultdict(int)) if track_guest_costs else None
+        
+        # Track all neighbor pairs across all rounds
+        all_neighbor_pairs = set()
+        
+        # Score each arrangement individually
+        for round_idx, arrangement in enumerate(arrangements_to_score):
+            round_score = 0
+            
+            # Score gender alternation
+            if person_genders:
+                for seat in seats:
+                    if seat in arrangement:
+                        person = arrangement[seat]
+                        person_gender = person_genders.get(person)
+                        
+                        # Check side neighbors (left/right)
+                        for neighbor_seat in seat_neighbors[seat]["side"]:
+                            if neighbor_seat in arrangement:
+                                neighbor = arrangement[neighbor_seat]
+                                neighbor_gender = person_genders.get(neighbor)
+                                
+                                # Penalize same gender neighbors on the sides
+                                if person_gender == neighbor_gender:
+                                    penalty = -GENDER_ALTERNATION_WEIGHT
+                                    round_score += penalty
+                                    if collect_components:
+                                        gender_score += penalty
+                                    if track_guest_costs:
+                                        guest_costs[person]["gender"] += penalty / 2
+                                        guest_costs[neighbor]["gender"] += penalty / 2
+                                else:
+                                    bonus = GENDER_ALTERNATION_WEIGHT / 2
+                                    round_score += bonus
+                                    if collect_components:
+                                        gender_score += bonus
+                                    if track_guest_costs:
+                                        guest_costs[person]["gender"] += bonus / 2
+                                        guest_costs[neighbor]["gender"] += bonus / 2
+                        
+                        # Check opposite neighbors (across the table)
+                        for neighbor_seat in seat_neighbors[seat]["front"]:
+                            if neighbor_seat in arrangement:
+                                neighbor = arrangement[neighbor_seat]
+                                neighbor_gender = person_genders.get(neighbor)
+                                
+                                # Penalize same gender neighbors across the table
+                                if person_gender == neighbor_gender:
+                                    penalty = -GENDER_ALTERNATION_WEIGHT
+                                    round_score += penalty
+                                    if collect_components:
+                                        gender_score += penalty
+                                    if track_guest_costs:
+                                        guest_costs[person]["gender"] += penalty / 2
+                                        guest_costs[neighbor]["gender"] += penalty / 2
+                                else:
+                                    bonus = GENDER_ALTERNATION_WEIGHT / 2
+                                    round_score += bonus
+                                    if collect_components:
+                                        gender_score += bonus
+                                    if track_guest_costs:
+                                        guest_costs[person]["gender"] += bonus / 2
+                                        guest_costs[neighbor]["gender"] += bonus / 2
+            
+            # Score preferred neighbors
+            if preferred_neighbors:
+                for seat in seats:
+                    if seat in arrangement:
+                        person = arrangement[seat]
+                        if person in preferred_neighbors:
+                            for neighbor_seat in seat_neighbors[seat]["all"]:
+                                if neighbor_seat in arrangement:
+                                    neighbor = arrangement[neighbor_seat]
+                                    # Reward preferred neighbors
+                                    if neighbor in preferred_neighbors.get(person, []):
+                                        bonus = PREFERRED_NEIGHBOR_WEIGHT
+                                        round_score += bonus
+                                        if collect_components:
+                                            preferred_score += bonus
+                                        if track_guest_costs:
+                                            guest_costs[person]["preferred"] += bonus / 2
+                                            guest_costs[neighbor]["preferred"] += bonus / 2
+            
+            # Score excluded neighbors
+            if excluded_neighbors:
+                for seat in seats:
+                    if seat in arrangement:
+                        person = arrangement[seat]
+                        if person in excluded_neighbors:
+                            for neighbor_seat in seat_neighbors[seat]["all"]:
+                                if neighbor_seat in arrangement:
+                                    neighbor = arrangement[neighbor_seat]
+                                    # Heavily penalize excluded neighbors
+                                    if neighbor in excluded_neighbors.get(person, []):
+                                        penalty = -EXCLUDED_NEIGHBOR_WEIGHT
+                                        round_score += penalty
+                                        if collect_components:
+                                            excluded_score += penalty
+                                        if track_guest_costs:
+                                            guest_costs[person]["excluded"] += penalty / 2
+                                            guest_costs[neighbor]["excluded"] += penalty / 2
+            
+            # Collect neighbor pairs for this round
+            for seat in seats:
+                if seat in arrangement:
+                    person = arrangement[seat]
+                    for neighbor_seat in seat_neighbors[seat]["all"]:
+                        if neighbor_seat in arrangement:
+                            neighbor = arrangement[neighbor_seat]
+                            # Store the neighbor pair (sorted to avoid duplicates)
+                            pair = tuple(sorted([person, neighbor]))
+                            # Add to the set with round information
+                            all_neighbor_pairs.add((pair, round_idx))
+            
+            total_score += round_score
+        
+        # Penalize repeat neighbors across different rounds
+        neighbor_count = defaultdict(list)
+        for (pair, round_idx) in all_neighbor_pairs:
+            neighbor_count[pair].append(round_idx)
+        
+        for pair, rounds in neighbor_count.items():
+            if len(rounds) > 1:
+                # Apply increasing penalty for each repeat
+                repeat_penalty = sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
+                total_score -= repeat_penalty
+                if collect_components:
+                    repeat_score -= repeat_penalty
+                if track_guest_costs:
+                    person1, person2 = pair
+                    penalty_per_person = -repeat_penalty / 2
+                    guest_costs[person1]["repeat"] += penalty_per_person
+                    guest_costs[person2]["repeat"] += penalty_per_person
+        
+        if track_guest_costs:
+            # Calculate total cost per guest
+            for person in guest_costs:
+                guest_costs[person]["total"] = sum(guest_costs[person].values())
+            
+            if collect_components:
+                return total_score, {
+                    "Gender Alternation": gender_score,
+                    "Preferred Neighbors": preferred_score,
+                    "Excluded Neighbors": excluded_score,
+                    "Repeat Neighbors": repeat_score
+                }, guest_costs
+            return total_score, guest_costs
+        
+        if collect_components:
+            return total_score, {
+                "Gender Alternation": gender_score,
+                "Preferred Neighbors": preferred_score,
+                "Excluded Neighbors": excluded_score,
+                "Repeat Neighbors": repeat_score
+            }
+        return total_score
+    
+    # Identify locked seats and people for each round
+    locked_seats_by_round = []
+    locked_people_by_round = []
+    
+    for round_idx in range(len(arrangements)):
+        locked_seats = set()
+        locked_people = set()
+        
+        if locked_seats_per_round and round_idx in locked_seats_per_round:
+            for seat_label, person in locked_seats_per_round[round_idx].items():
+                seat_tuple = seat_label_to_tuple(seat_label, tables, table_letters)
+                if seat_tuple:
+                    locked_seats.add(seat_tuple)
+                    locked_people.add(person)
+        
+        locked_seats_by_round.append(locked_seats)
+        locked_people_by_round.append(locked_people)
+    
+    # Identify free seats for each round (seats that aren't locked)
+    free_seats_by_round = []
+    for round_idx in range(len(arrangements)):
+        free_seats_by_round.append([s for s in seats if s not in locked_seats_by_round[round_idx]])
+    
+    # Initial score with component breakdown and guest costs
+    initial_score, components, guest_costs = score_all_arrangements(collect_components=True, track_guest_costs=True)
+    
+    # Store the best solution found so far
+    best_score = initial_score
+    best_arrangements = copy.deepcopy(arrangements)
+    best_guest_costs = guest_costs
+    
+    # Current working solution (may be worse than best)
+    current_score = initial_score
+    current_arrangements = copy.deepcopy(arrangements)
+    
+    # Record initial scores
+    iterations.append(0)
+    best_scores.append(best_score)
+    for component, value in components.items():
+        component_scores[component].append(value)
+    
+    # Simulated annealing parameters
+    temperature = 1.0
+    cooling_rate = 0.995
+    
+    # Update frequency (how often to update the chart)
+    update_freq = max(1, max_iterations // 100)
+    
+    # Probability of trying different move types
+    flip_probability = 0.2  # 20% chance for table corner flip
+    adjacent_swap_probability = 0.3  # 30% chance for adjacent swap
+    # Remaining 50% will be random swaps
+    
+    # Optimization loop
+    for iteration in range(max_iterations):
+        # Work with a copy of the current arrangements
+        working_arrangements = copy.deepcopy(current_arrangements)
+        
+        # Randomly select a round
+        round_idx = random.randrange(len(working_arrangements))
+        
+        arrangement = working_arrangements[round_idx]
+        
+        # Get locked seats and people for this round
+        locked_seats = locked_seats_by_round[round_idx]
+        locked_people = locked_people_by_round[round_idx]
+        
+        # Decide which move type to try
+        move_type_rand = random.random()
+        
+        if move_type_rand < flip_probability:
+            # ------------------ FLIP MOVE ------------------
+            # Choose a random table
+            table_ids = list(tables.keys())
+            if not table_ids:
+                continue
+            table_id = random.choice(table_ids)
+            seats_per_side = tables[table_id]
+            
+            # Get free seats for this table in the current round
+            free_seats_table = [s for s in free_seats_by_round[round_idx] if s[0] == table_id]
+            
+            # Choose a corner at random: "left" or "right"
+            corner = random.choice(["left", "right"])
+            
+            # Define a helper to compute the maximum contiguous block width from a given corner
+            def max_block_width_for_row(row, corner):
+                width = 0
+                if corner == "left":
+                    for col in range(seats_per_side):
+                        seat = (table_id, row, col)
+                        if seat in free_seats_table:
+                            width += 1
+                        else:
+                            break
+                else:  # "right" corner: start at the rightmost column and go left
+                    for col in range(seats_per_side - 1, -1, -1):
+                        seat = (table_id, row, col)
+                        if seat in free_seats_table:
+                            width += 1
+                        else:
+                            break
+                return width
+            
+            # Calculate maximum contiguous block width for each row
+            max_width_row0 = max_block_width_for_row(0, corner)
+            max_width_row1 = max_block_width_for_row(1, corner)
+            max_width = min(max_width_row0, max_width_row1)
+            
+            # If no contiguous free block exists, fall back to swap move
+            if max_width < 1:
+                # Fall back to swap move
+                if len(free_seats_by_round[round_idx]) < 2:
+                    continue
+                seat1, seat2 = random.sample(free_seats_by_round[round_idx], 2)
+                person1, person2 = arrangement[seat1], arrangement[seat2]
+                
+                # Skip if either person is locked
+                if person1 in locked_people or person2 in locked_people:
+                    continue
+                
+                # Swap them
+                arrangement[seat1], arrangement[seat2] = person2, person1
+            else:
+                # Choose a block width randomly from the available range
+                k = random.randint(1, max_width)
+                
+                # Identify the block of seats to flip
+                if corner == "left":
+                    block_seats = [(table_id, row, col) for row in [0, 1] for col in range(k)]
+                else:  # right corner
+                    block_seats = [(table_id, row, col) for row in [0, 1] for col in range(seats_per_side - k, seats_per_side)]
+                
+                # Filter out locked seats
+                block_seats = [seat for seat in block_seats if seat not in locked_seats]
+                
+                # Create a new assignment by flipping each row's block
+                for row in [0, 1]:
+                    if corner == "left":
+                        row_seats = [(table_id, row, col) for col in range(k) if (table_id, row, col) not in locked_seats]
+                    else:
+                        row_seats = [(table_id, row, col) for col in range(seats_per_side - k, seats_per_side) if (table_id, row, col) not in locked_seats]
+                    
+                    # Only include seats that are in the arrangement and not locked
+                    row_seats = [seat for seat in row_seats if seat in arrangement and seat not in locked_seats]
+                    if not row_seats:
+                        continue
+                    
+                    # Get the current people in these seats
+                    people = [arrangement[seat] for seat in row_seats]
+                    
+                    # Skip if any of these people are locked
+                    if any(person in locked_people for person in people):
+                        continue
+                    
+                    # Reverse the people and reassign
+                    reversed_people = list(reversed(people))
+                    for seat, person in zip(row_seats, reversed_people):
+                        arrangement[seat] = person
+        
+        elif move_type_rand < flip_probability + adjacent_swap_probability:
+            # ------------------ ADJACENT SWAP MOVE ------------------
+            # Find all pairs of adjacent seats where both are free
+            adjacent_free_pairs = []
+            
+            for seat in free_seats_by_round[round_idx]:
+                if seat in arrangement:
+                    person = arrangement[seat]
+                    # Skip if this person is locked
+                    if person in locked_people:
+                        continue
+                        
+                    # Check side neighbors
+                    for neighbor_seat in seat_neighbors[seat]["side"]:
+                        if (neighbor_seat in free_seats_by_round[round_idx] and 
+                            neighbor_seat in arrangement):
+                            neighbor = arrangement[neighbor_seat]
+                            # Skip if neighbor is locked
+                            if neighbor in locked_people:
+                                continue
+                            # Add this pair to our list
+                            adjacent_free_pairs.append((seat, neighbor_seat))
+            
+            # If no adjacent free pairs, fall back to random swap
+            if not adjacent_free_pairs:
+                if len(free_seats_by_round[round_idx]) < 2:
+                    continue
+                seat1, seat2 = random.sample(free_seats_by_round[round_idx], 2)
+                person1, person2 = arrangement[seat1], arrangement[seat2]
+                
+                # Skip if either person is locked
+                if person1 in locked_people or person2 in locked_people:
+                    continue
+                
+                # Swap them
+                arrangement[seat1], arrangement[seat2] = person2, person1
+            else:
+                # Choose a random adjacent pair
+                seat1, seat2 = random.choice(adjacent_free_pairs)
+                person1, person2 = arrangement[seat1], arrangement[seat2]
+                
+                # Swap them
+                arrangement[seat1], arrangement[seat2] = person2, person1
+        
+        else:
+            # ------------------ RANDOM SWAP MOVE ------------------
+            # Randomly select two free seats to swap
+            free_seats = free_seats_by_round[round_idx]
+            if len(free_seats) < 2:
+                continue
+                
+            seat1, seat2 = random.sample(free_seats, 2)
+            person1, person2 = arrangement[seat1], arrangement[seat2]
+            
+            # Skip if either person is locked
+            if person1 in locked_people or person2 in locked_people:
+                continue
+            
+            # Swap them
+            arrangement[seat1], arrangement[seat2] = person2, person1
+        
+        # Make sure to update the working_arrangements with the modified arrangement
+        working_arrangements[round_idx] = arrangement
+        
+        # Calculate new score
+        new_score_result = score_all_arrangements(arrangements_to_score=working_arrangements, track_guest_costs=False)
+        if isinstance(new_score_result, tuple):
+            new_score, _ = new_score_result
+        else:
+            new_score = new_score_result
+        
+        # Decide whether to accept the move
+        accept_move = False
+        if new_score > current_score:
+            # Accept any improvement to current solution
+            current_score = new_score
+            current_arrangements = copy.deepcopy(working_arrangements)
+            accept_move = True
+            
+            # Update best solution if this is better
+            if new_score > best_score:
+                best_score = new_score
+                best_arrangements = copy.deepcopy(working_arrangements)
+        elif random.random() < math.exp((new_score - current_score) / temperature):
+            # Sometimes accept worse solutions based on temperature
+            current_score = new_score
+            current_arrangements = copy.deepcopy(working_arrangements)
+            accept_move = True
+        
+        # Record progress periodically
+        if iteration % update_freq == 0 or iteration == max_iterations - 1:
+            # Always record the BEST score, not the current one
+            iterations.append(iteration + 1)
+            best_scores.append(best_score)
+            
+            # Get component breakdown for BEST arrangements
+            _, components = score_all_arrangements(collect_components=True, arrangements_to_score=best_arrangements)
+            
+            for component, value in components.items():
+                component_scores[component].append(value)
+            
+            # Update the progress chart
+            progress_df = pd.DataFrame({
+                'Iteration': iterations,
+                'Best Score': best_scores
+            })
+            
+            # Create a line chart for the best score
+            progress_chart.line_chart(progress_df.set_index('Iteration'))
+        
+        # Cool down
+        temperature *= cooling_rate
+    
+    # Final detailed breakdown
+    with cost_breakdown:
+        st.write("### Final Cost Breakdown")
+        
+        # Create a DataFrame for component scores
+        component_df = pd.DataFrame({
+            'Iteration': iterations,
+            **{component: values for component, values in component_scores.items()}
+        })
+        
+        # Display the component chart
+        st.line_chart(component_df.set_index('Iteration'))
+        
+        # Display the final component values
+        st.write("### Final Component Values")
+        final_components = {component: values[-1] for component, values in component_scores.items()}
+        final_components['Total'] = sum(final_components.values())
+        st.json(final_components)
+    
+    # Calculate final guest costs for the best arrangement
+    _, _, final_guest_costs = score_all_arrangements(collect_components=True, arrangements_to_score=best_arrangements, track_guest_costs=True)
+    
+    # Display final problematic guests
+    with problematic_guests:
+        st.write("### Guest Cost Breakdown")
+        display_problematic_guests(final_guest_costs)
+    
+    return best_arrangements
+
+def display_problematic_guests(guest_costs):
+    """Display the guests with the highest costs, broken down by cost type"""
+    if not guest_costs:
+        st.write("No guest cost data available")
+        return
+    
+    # Convert to DataFrame for easier manipulation
+    rows = []
+    for person, costs in guest_costs.items():
+        row = {'Guest': person}
+        row.update(costs)
+        rows.append(row)
+    
+    df = pd.DataFrame(rows)
+    
+    # Sort by total cost (most problematic first)
+    if 'total' in df.columns:
+        df = df.sort_values('total')
+    
+    # Display the table
+    st.dataframe(df)
+    
+    # Show the top 5 most problematic guests
+    if len(df) > 0 and 'total' in df.columns:
+        worst_guests = df.sort_values('total').head(5)
+        st.write("### Top 5 Most Problematic Guests")
+        
+        # Create a bar chart of the worst guests
+        st.bar_chart(worst_guests.set_index('Guest')['total'])
 
 def set_fixed_assignments():
     with st.sidebar.expander("Fixed Assignments"):
@@ -492,26 +1094,68 @@ def main():
     set_guests()
     set_fixed_assignments()
     
-    
-    
     TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state[str(Settings.TABLE_DEFINITIONS)])
 
     guests = st.session_state.guests
     
+    st.markdown("## Seating Generation")
     cols = st.columns([1, 1, 5])  
     with cols[0]:
         num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=5, value=3, step=1)
+        use_optimization = st.checkbox("Use optimization", value=True)
+        if use_optimization:
+            max_iterations = st.number_input("Optimization iterations", min_value=100, max_value=100000, value=1000, step=100)
+        else:
+            max_iterations = 0
 
-    # Generate arrangements
-    locked_seats_per_round = st.session_state.locked_seats_per_round if hasattr(st.session_state, 'locked_seats_per_round') else {}
-    arrangements = run_optimization(TABLES, guests, num_rounds, locked_seats_per_round, table_letters=TABLE_LETTERS)
+    # Check if we have previous arrangements to build upon
+    previous_arrangements = None
+    if "previous_arrangements" in st.session_state:
+        use_previous = st.checkbox("Build upon previous arrangements", value=False)
+        if use_previous:
+            previous_arrangements = st.session_state.previous_arrangements
     
-    show_arrangements(arrangements, TABLES, TABLE_LETTERS)
+    # Add a prominent run button to trigger the optimization
+    st.markdown("### Generate New Arrangements")
+    run_button = st.button("Generate Seating Arrangements", key="generate_button", use_container_width=True)
     
-    st.write(str(arrangements))
-
+    if run_button or "arrangements" not in st.session_state:
+        # Get gender information
+        male_names = parse_lines(st.session_state[str(Settings.MALES)])
+        female_names = parse_lines(st.session_state[str(Settings.FEMALES)])
+        person_genders = {}
+        for name in male_names:
+            person_genders[name] = "M"
+        for name in female_names:
+            person_genders[name] = "F"
+        
+        # Get preferences
+        preferred_neighbors = st.session_state.preferred_neighbors if hasattr(st.session_state, 'preferred_neighbors') else {}
+        excluded_neighbors = st.session_state.excluded_neighbors if hasattr(st.session_state, 'excluded_neighbors') else {}
+        
+        # Generate arrangements
+        locked_seats_per_round = st.session_state.locked_seats_per_round if hasattr(st.session_state, 'locked_seats_per_round') else {}
+        
+        arrangements = run_optimization(
+            TABLES, 
+            guests, 
+            num_rounds, 
+            locked_seats_per_round, 
+            table_letters=TABLE_LETTERS,
+            previous_arrangements=previous_arrangements,
+            person_genders=person_genders if use_optimization else None,
+            preferred_neighbors=preferred_neighbors if use_optimization else None,
+            excluded_neighbors=excluded_neighbors if use_optimization else None,
+            max_iterations=max_iterations
+        )
+        
+        # Store arrangements for potential future use
+        st.session_state.previous_arrangements = arrangements
+        st.session_state.arrangements = arrangements
     
-
+    # Display the current arrangements
+    if "arrangements" in st.session_state:
+        show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
 
 if __name__ == "__main__":
     if "__streamlitmagic__" not in locals():
