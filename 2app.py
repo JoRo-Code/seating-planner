@@ -197,35 +197,74 @@ def generate_table_html(table_id, table_letter, tables):
 
 ## Input
 
+def load_settings():
+    """Load settings from default or uploaded file"""
+    if "uploaded_settings" in st.session_state:
+        return st.session_state.uploaded_settings
+    else:
+        return DEFAULT_SETTINGS
+
+def save_current_settings():
+    """Save the current settings to a JSON file"""
+    # Collect all current settings
+    current_settings = {}
+    for setting in Settings:
+        setting_key = str(setting)
+        if setting_key in st.session_state:
+            current_settings[setting_key] = st.session_state[setting_key]
+    
+    # Convert to JSON string with proper formatting
+    settings_json = json.dumps(current_settings, indent=2)
+    
+    # Show a preview of the settings
+    st.code(settings_json, language="json")
+    
+    # Create a download button
+    st.download_button(
+        label="Download Settings",
+        data=settings_json,
+        file_name="seatplan_settings.json",
+        mime="application/json"
+    )
+
+def import_settings():
+    """Import settings from a JSON file"""
+    uploaded_file = st.file_uploader("Upload settings file", type=["json"])
+    
+    if uploaded_file is not None:
+        try:
+            settings = json.load(uploaded_file)
+            st.session_state.uploaded_settings = settings
+            st.success("Settings loaded successfully!")
+            # Force a rerun to apply the new settings
+            st.experimental_rerun()
+        except Exception as e:
+            st.error(f"Error loading settings: {str(e)}")
+
 def set_guests():
     with st.sidebar.expander("Guests"):
         st.markdown("""
             Enter the names of the guests.
         """)
-        if "uploaded_settings" in st.session_state:
-            settings = st.session_state.uploaded_settings
-            male_text = st.text_area("Males (one per line)", 
-                                            value=get_setting(settings, Settings.MALES), height=150,
-                                            key='male_text', help="One male name per line.")
-            male_count = len([name for name in male_text.splitlines() if name.strip()])
-            st.caption(f"Male count: {male_count}")
-            
-            female_text = st.text_area("Females (one per line)", 
-                                            value=get_setting(settings, Settings.FEMALES), height=150,
-                                            key='female_text', help="One female name per line.")
-            female_count = len([name for name in female_text.splitlines() if name.strip()])
-            st.caption(f"Female count: {female_count}")
-        else:
-            male_text = st.text_area("Males (one per line)", value=get_setting(DEFAULT_SETTINGS, Settings.MALES), height=150,
-                                            key='male_text', help="One male name per line.")
-            male_count = len([name for name in male_text.splitlines() if name.strip()])
-            st.caption(f"Male count: {male_count}")
-            
-            female_text = st.text_area("Females (one per line)", value=get_setting(DEFAULT_SETTINGS, Settings.FEMALES), height=150,
-                                            key='female_text', help="One female name per line.")
-            female_count = len([name for name in female_text.splitlines() if name.strip()])
-            st.caption(f"Female count: {female_count}")
-            
+        
+        settings = load_settings()
+        
+        male_text = st.text_area("Males (one per line)", 
+                                  value=get_setting(settings, Settings.MALES), 
+                                  height=150,
+                                  key=str(Settings.MALES), 
+                                  help="One male name per line.")
+        male_count = len([name for name in male_text.splitlines() if name.strip()])
+        st.caption(f"Male count: {male_count}")
+        
+        female_text = st.text_area("Females (one per line)", 
+                                   value=get_setting(settings, Settings.FEMALES), 
+                                   height=150,
+                                   key=str(Settings.FEMALES), 
+                                   help="One female name per line.")
+        female_count = len([name for name in female_text.splitlines() if name.strip()])
+        st.caption(f"Female count: {female_count}")
+        
         male_names = parse_lines(male_text)
         female_names = parse_lines(female_text)
         guests = male_names + female_names
@@ -247,25 +286,16 @@ def set_tables():
     with st.expander("Table Configurations"):
         col1, col2 = st.columns([1, 2])
         with col1:
-            if "uploaded_settings" in st.session_state:
-                settings = st.session_state.uploaded_settings
-                st.text_area(
-                    "Define tables (e.g., 'A: 8')", 
-                    value=get_setting(settings, Settings.TABLE_DEFINITIONS),
-                    height=150,
-                    key=str(Settings.TABLE_DEFINITIONS),
-                    help="Each line: Letter: Number"
-                )
-            else:
-                st.text_area(
-                    "Define tables (e.g., 'A: 8')", 
-                    value=get_setting(DEFAULT_SETTINGS, Settings.TABLE_DEFINITIONS),
-                    height=150,
-                    key=str(Settings.TABLE_DEFINITIONS),
-                    help="Each line: Letter: Number"
-                ) 
+            settings = load_settings()
+            st.text_area(
+                "Define tables (e.g., 'A: 8')", 
+                value=get_setting(settings, Settings.TABLE_DEFINITIONS),
+                height=150,
+                key=str(Settings.TABLE_DEFINITIONS),
+                help="Each line: Letter: Number"
+            )
                 
-        TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state.table_definitions)
+        TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state[str(Settings.TABLE_DEFINITIONS)])
         
         with col2:
             for table_id in sorted(TABLES.keys()):
@@ -378,23 +408,14 @@ def set_fixed_assignments():
             Format: Round#:SeatID:Name (e.g., 1:A1:Johan)
         """)
         
-        if "uploaded_settings" in st.session_state:
-            settings = st.session_state.uploaded_settings
-            fixed_assignments_text = st.text_area(
-                "Fixed Assignments", 
-                value=get_setting(settings, Settings.FIXED_ASSIGNMENTS),
-                height=150,
-                key='fixed_assignments_text',
-                help="Format: Round#:SeatID:Name (e.g., 1:A1:Johan)"
-            )
-        else:
-            fixed_assignments_text = st.text_area(
-                "Fixed Assignments", 
-                value=get_setting(DEFAULT_SETTINGS, Settings.FIXED_ASSIGNMENTS),
-                height=150,
-                key='fixed_assignments_text',
-                help="Format: Round#:SeatID:Name (e.g., 1:A1:Johan)"
-            )
+        settings = load_settings()
+        fixed_assignments_text = st.text_area(
+            "Fixed Assignments", 
+            value=get_setting(settings, Settings.FIXED_ASSIGNMENTS),
+            height=150,
+            key=str(Settings.FIXED_ASSIGNMENTS),
+            help="Format: Round#:SeatID:Name (e.g., 1:A1:Johan)"
+        )
         
         # Parse fixed assignments
         locked_seats_per_round = defaultdict(dict)
@@ -417,18 +438,63 @@ def set_fixed_assignments():
         
         st.session_state.locked_seats_per_round = dict(locked_seats_per_round)
 
+def import_export_settings():
+    """Handle import and export of settings"""
+    st.sidebar.markdown("## Import/Export")
+    
+    # Import settings
+    uploaded_file = st.sidebar.file_uploader("Import Settings", type=['json'])
+    if uploaded_file is not None:
+        try:
+            settings = json.load(uploaded_file)
+            st.session_state.uploaded_settings = settings
+            st.sidebar.success("Settings loaded successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Error loading settings: {str(e)}")
+    
+    # Export settings toggle
+    if "show_export" not in st.session_state:
+        st.session_state.show_export = False
+
+    if st.sidebar.button("Export Settings"):
+        st.session_state.show_export = not st.session_state.show_export
+
+    # Show export section if toggled
+    if st.session_state.show_export:
+        # Collect all current settings
+        current_settings = {}
+        for setting in Settings:
+            setting_key = str(setting)
+            if setting_key in st.session_state:
+                current_settings[setting_key] = st.session_state[setting_key]
+        
+        # Convert to JSON string with proper formatting
+        settings_json = json.dumps(current_settings, indent=2)
+        
+        st.sidebar.download_button(
+            label="👉 Click here to download Settings JSON",
+            data=settings_json,
+            file_name="seatplan_settings.json",
+            mime="application/json",
+            key="settings_download"
+        )
+        st.sidebar.write("Settings preview:")
+        st.sidebar.json(current_settings)
+
 def main():
     st.set_page_config(layout="wide")
 
     st.title("SeatPlan v2")
     
-    set_tables()
-
-    set_guests()
+    import_export_settings()
     
+    set_tables()
+    set_guests()
     set_fixed_assignments()
     
-    TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state.table_definitions)
+    
+    
+    TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state[str(Settings.TABLE_DEFINITIONS)])
 
     guests = st.session_state.guests
     
