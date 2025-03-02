@@ -229,6 +229,12 @@ def set_guests():
         male_names = parse_lines(male_text)
         female_names = parse_lines(female_text)
         guests = male_names + female_names
+        
+        # Check for duplicates
+        duplicate_names = [name for name in set(guests) if guests.count(name) > 1]
+        if duplicate_names:
+            st.error(f"Duplicate names found: {', '.join(duplicate_names)}")
+            
         person_genders = {}
         for name in male_names:
             person_genders[name] = "M"
@@ -336,7 +342,6 @@ def main():
     st.title("SeatPlan v2")
     
     set_tables()
-    
 
     set_guests()
     
@@ -353,7 +358,6 @@ def main():
     
     show_arrangements(arrangements, TABLES, TABLE_LETTERS)
     
-
 
     
 
