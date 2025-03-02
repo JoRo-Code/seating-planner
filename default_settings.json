@@ -2,7 +2,8 @@
     "table_definitions": "A: 5\nB: 5\nC: 5\nD: 5\nE: 5\nF: 5", 
     "males": "Bengt\nDavid\nDaniel L\nErik\nDaniel T\nJoel\nJohan R\nLars\nEmil\nOla\nOlle\nOscar\nPer I\nPeter\nS\u00f6ren\nJohan D\nUrban\nThomas\nJan\nPer S\nNiclas\nJakob\nMats\nJonas\nAnders\nH\u00e5kan\nChristian\nStefan\nCalle",
     "females": "Anna Ho\nAnna Ha\nChristine\nCatharina\nCecilia\nEmelie\nHanna\nHelena N\nHelena R\nLiliana\nLotta\nLudmilla\nMonica\nSarah\nSophie\nTilde\nUlrika\nEliza\nCharlotte\nHelena E\nMargot\nInger\nAnnika\nMaria\nSara\nChristina B\nChristina P\n\u00c5sa\nElin\nKlara\nLea",
-    "fixed_assignments": "Johan R: A6\nUlrika: S\u00f6ren, Mats, Johan D, Lars, H\u00e5kan\nS\u00f6ren Ulrika",
+    "fixed_assignments": "1:A1:Johan\n1:A2:Ludmilla\n2:B1:Johan\n2:B2:Ludmilla",
+
     "fixed_seat_assignments": "1: A1:Johan R\n2: B5:Ulrika\n3: C10:David",
     "preferred_side_preferences_text": "Johan R: Liliana, Christina B, Margot, \nMargot: Bengt\nBengt: Margot\nLudmilla: David, Daniel L, Jakob, Urban, Johan D, Jan, Niclas, Mats\nEliza: Jonas, Oscar, Lea, Sophie\nJohan D: Ulrika, Christine, Sara, Sarah\nCatharina: Mats, Stefan",
     "excluded_preferences_text": "John: Mary, Susan",
