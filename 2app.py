@@ -269,6 +269,34 @@ def set_tables():
                 table_height = max(150, 100 + (TABLES[table_id] // 8) * 50)
                 components.html(html, height=table_height, scrolling=True)
 
+def show_arrangements(arrangements, tables, table_letters):    
+    st.markdown("## Arrangements") 
+    
+    cols = st.columns([1, 1, 5])  
+    with cols[0]:
+        tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=3, step=1)
+    
+    # Display each arrangement
+    for round_idx, arrangement in enumerate(arrangements):
+        st.markdown(f"### Arrangement {round_idx + 1}")
+        
+        # Create columns for each table
+        cols = st.columns(len(tables))
+        
+        # Display each table
+        table_ids = sorted(tables.keys())
+
+        for i in range(0, len(table_ids), tables_per_row):
+            cols = st.columns(tables_per_row)
+            for j, table_id in enumerate(table_ids[i:i+tables_per_row]):
+                with cols[j]:
+                    table_letter = table_letters[table_id]
+                    st.markdown(f"**Table {table_letter}**")
+                    html = generate_arrangement_html(arrangement, table_id, tables)
+                    # Calculate dynamic height and width based on number of seats
+                    table_height = max(150, 100 + (tables[table_id] // 8) * 50)
+                    calculated_width = tables[table_id] * 62  # Adjust this multiplier if needed
+                    components.html(html, height=table_height, width=calculated_width, scrolling=True)
 
 def run_optimization(tables, guests, num_rounds=3):
     """
@@ -314,51 +342,20 @@ def main():
     
     TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state.table_definitions)
 
-    
-    ### Show arrangements
-    
-    st.markdown("## Arrangements") 
-    
-    # Place inputs side by side with smaller widths
-    cols = st.columns([1, 1, 5])  # Adjust the ratio to make inputs smaller
-    with cols[0]:
-        num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=10, value=3)
-    with cols[1]:
-        tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=2, step=1)
-
     guests = st.session_state.guests
     
+    cols = st.columns([1, 1, 5])  
+    with cols[0]:
+        num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=5, value=3, step=1)
+
     # Generate arrangements
     arrangements = run_optimization(TABLES, guests, num_rounds)
     
-    # Display each arrangement
-    for round_idx, arrangement in enumerate(arrangements):
-        st.markdown(f"### Arrangement {round_idx + 1}")
-        
-        # Create columns for each table
-        cols = st.columns(len(TABLES))
-        
-        # Display each table
-        table_ids = sorted(TABLES.keys())
+    show_arrangements(arrangements, TABLES, TABLE_LETTERS)
+    
 
-        for i in range(0, len(table_ids), tables_per_row):
-            cols = st.columns(tables_per_row)
-            for j, table_id in enumerate(table_ids[i:i+tables_per_row]):
-                with cols[j]:
-                    table_letter = TABLE_LETTERS[table_id]
-                    st.markdown(f"**Table {table_letter}**")
-                    html = generate_arrangement_html(arrangement, table_id, TABLES)
-                    # Calculate dynamic height and width based on number of seats
-                    table_height = max(150, 100 + (TABLES[table_id] // 8) * 50)
-                    calculated_width = TABLES[table_id] * 62  # Adjust this multiplier if needed
-                    components.html(html, height=table_height, width=calculated_width, scrolling=True)
 
-                # table_letter = TABLE_LETTERS[table_id]
-                # st.markdown(f"**Table {table_letter}**")
-                # html = generate_arrangement_html(arrangement, table_id, TABLES)
-                # # Calculate dynamic height based on number of seats
-                # table_height = max(150, 100 + (TABLES[table_id] // 8) * 50)
-                # components.html(html, height=table_height, scrolling=True)
+    
 
 
 if __name__ == "__main__":
