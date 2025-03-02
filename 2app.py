@@ -304,35 +304,71 @@ def show_arrangements(arrangements, tables, table_letters):
                     calculated_width = tables[table_id] * 62  # Adjust this multiplier if needed
                     components.html(html, height=table_height, width=calculated_width, scrolling=True)
 
-def run_optimization(tables, guests, num_rounds=3):
+
+def seat_label_to_tuple(seat_label, TABLES, TABLE_LETTERS):
+    """
+    Convert a seat label (like "A1" or "A9") into a seat tuple (table_id, row, col)
+    based on TABLES (mapping table_id -> seats_per_side) and TABLE_LETTERS (mapping table_id -> letter).
+    """
+    for table_id, letter in TABLE_LETTERS.items():
+        if seat_label.startswith(letter):
+            try:
+                num = int(seat_label[len(letter):])
+            except ValueError:
+                continue
+            seats_per_side = TABLES[table_id]
+            if num <= seats_per_side:
+                row = 0
+                col = num - 1
+            else:
+                row = 1
+                col = num - seats_per_side - 1
+            return (table_id, row, col)
+    return None
+
+def run_optimization(tables, guests, num_rounds=3, locked_seats_per_round=None, table_letters=None):
     """
     Args:
         tables: {table_id: seats_per_side}
         guests: list of guest names
         num_rounds: number of rounds
-    
+        locked_seats_per_round:
     Returns:
-        List of arrangements, where each arrangement is a dictionary mapping seats to guest names
+        [{(table_id, row, col): guest_name}]
     """
     # Generate all seats
     seats = generate_seats(tables)
     
-    num_seats = len(seats)    
     # Generate random arrangements
     arrangements = []
-    for _ in range(num_rounds):
-        # Shuffle the guests
-        random_guests = copy.deepcopy(guests)
-        random.shuffle(random_guests)
-        
-        # Create arrangement mapping seats to guests
+    
+    for round_index in range(num_rounds):
         arrangement = {}
-        for i, seat in enumerate(seats):
-            if i < len(random_guests):
-                arrangement[seat] = random_guests[i]
+        # First, if there are locked seats for this round, place them.
+        if locked_seats_per_round and round_index in locked_seats_per_round:
+            locked_assignments = locked_seats_per_round[round_index]  # e.g., {"A1": "Johan", "A2": "Ludmilla"}
+            for seat_label, guest in locked_assignments.items():
+                seat_tuple = seat_label_to_tuple(seat_label, tables, table_letters)
+                if seat_tuple:
+                    arrangement[seat_tuple] = guest
+    
+        # remove locked guests
+        locked_guests = set(arrangement.values())
+        available_guests = [g for g in guests if g not in locked_guests]
+        
+        # place remaining guests
+        random.shuffle(available_guests)
+
+        # Fill in the remaining seats with the available guests.
+        for seat in seats:
+            if seat not in arrangement:
+                if available_guests:
+                    arrangement[seat] = available_guests.pop(0)
+                else:
+                    break
         
         arrangements.append(arrangement)
-    
+        
     return arrangements
 
 
@@ -354,10 +390,14 @@ def main():
         num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=5, value=3, step=1)
 
     # Generate arrangements
-    arrangements = run_optimization(TABLES, guests, num_rounds)
+    locked_seats_per_round = {
+        0: {"A1": "Johan", "A2": "Ludmilla"},
+    }
+    arrangements = run_optimization(TABLES, guests, num_rounds, locked_seats_per_round, table_letters=TABLE_LETTERS)
     
     show_arrangements(arrangements, TABLES, TABLE_LETTERS)
     
+    st.write(str(arrangements))
 
     
 
