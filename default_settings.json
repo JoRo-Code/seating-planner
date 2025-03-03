@@ -2,7 +2,7 @@
     "table_definitions": "A: 5\nB: 5\nC: 5\nD: 5\nE: 5\nF: 5",
     "males": "Bengt\nDavid\nDaniel L\nErik\nDaniel T\nJoel\nJohan R\nLars\nEmil\nOla\nOlle\nOscar\nPer I\nPeter\nS\u00f6ren\nJohan D\nUrban\nThomas\nJan\nPer S\nNiclas\nJakob\nMats\nJonas\nAnders\nH\u00e5kan\nChristian\nStefan\nCalle",
     "females": "Anna Ho\nAnna Ha\nChristine\nCatharina\nCecilia\nEmelie\nHanna\nHelena N\nHelena R\nLiliana\nLotta\nLudmilla\nMonica\nSarah\nSophie\nTilde\nUlrika\nEliza\nCharlotte\nHelena E\nMargot\nInger\nAnnika\nMaria\nSara\nChristina B\nChristina P\n\u00c5sa\nElin\nKlara\nLea",
-    "fixed_assignments": "1:A3:Johan R\n2:A3:Johan R\n3:A3:Johan R\n1:B5:Eliza\n1:B9:Sophie\n1:B10:Lea",
+    "fixed_assignments": "1:A3:Johan R\n2:A3:Johan R\n3:A3:Johan R\n1:B5:Lea\n1:B9:Sophie\n1:B10:Eliza",
     "preferred_neighbors": "Johan R: Margot, Cecilia\nLudmilla: David",
     "excluded_neighbors": "Oscar: Tilde\nCecilia: Bengt",
     "same_gender_ok": "Lea, Eliza, Sophie",
