@@ -335,7 +335,6 @@ def import_settings():
 def set_same_gender_ok():
     with st.sidebar.expander("Gender Neutral"):
         settings = load_settings()
-        settings = load_settings()
         same_gender_ok_input = st.text_area("These are not penalized for sitting with the same gender", value=get_setting(settings, Settings.SAME_GENDER_OK), height=150, key=str(Settings.SAME_GENDER_OK))
         
         same_gender_ok = same_gender_ok_input.split(",")
@@ -871,6 +870,12 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                 
                 # Apply increasing penalty for each repeat
                 repeat_penalty = sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
+                total_score += repeat_penalty  # Apply the penalty to the total score
+                if collect_components:
+                    repeat_score += repeat_penalty
+                if track_guest_costs:
+                    guest_costs[person1]["repeat"] = guest_costs[person1].get("repeat", 0) + repeat_penalty/2
+                    guest_costs[person2]["repeat"] = guest_costs[person2].get("repeat", 0) + repeat_penalty/2
         
         # Penalize repeat corner positions
         for person, rounds in corner_positions_by_person.items():
@@ -1685,7 +1690,8 @@ def main():
     
     # Display the current arrangements
     if "arrangements" in st.session_state:
-        show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+        with st.spinner("Rendering seating arrangements..."):
+            show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
         
 
     # # Visualize seating for a specific guest
