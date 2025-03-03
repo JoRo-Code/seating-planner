@@ -14,8 +14,8 @@ _FROM_INPUT = "_from_input"
 class Weights(Enum):
     PREFERRED_NEIGHBOR = "preferred_neighbor"
     EXCLUDED_NEIGHBOR = "excluded_neighbor"
-    SAME_GENDER_OK = "same_gender_ok"
-    REPEAT_OK_GROUPS = "repeat_ok_groups"
+    GENDER_ALTERNATION = "gender_alternation"
+    REPEAT_NEIGHBOR = "repeat_neighbor"
     CORNER = "corner"
     
     def __str__(self):
@@ -306,14 +306,14 @@ def import_settings():
             st.error(f"Error loading settings: {str(e)}")
 
 def set_same_gender_ok():
-    with st.sidebar.expander("Same Gender OK"):
+    with st.sidebar.expander("Gender Neutral"):
         st.markdown("""
             Name1, Name2, ...
         """)
         settings = load_settings()
-        same_gender_ok_input = st.text_area("Same Gender OK", value=get_setting(settings, Settings.SAME_GENDER_OK), height=150, key=str(Settings.SAME_GENDER_OK))
+        same_gender_ok_input = st.text_area("These are not penalized for sitting with the same gender", value=get_setting(settings, Settings.SAME_GENDER_OK), height=150, key=str(Settings.SAME_GENDER_OK))
         
-        same_gender_ok = parse_lines(same_gender_ok_input)
+        same_gender_ok = same_gender_ok_input.split(",")
         st.session_state[str(Settings.SAME_GENDER_OK)+_FROM_INPUT] = same_gender_ok
         
         st.caption(f"Number of people who are okay with the same gender: {len(same_gender_ok)}")
@@ -586,12 +586,15 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
     
     Uses a local search algorithm with random swaps and flips.
     """
+    # Get weights from session state or use defaults
+    weights = st.session_state.get(str(Settings.WEIGHTS), {})
+    
     # Weights for different optimization criteria
-    GENDER_ALTERNATION_WEIGHT = 150  # Weight for gender alternation
-    PREFERRED_NEIGHBOR_WEIGHT = 20  # Weight for preferred neighbors
-    EXCLUDED_NEIGHBOR_WEIGHT = 50   # Weight for excluded neighbors
-    REPEAT_NEIGHBOR_WEIGHT = 15     # Weight for repeat neighbors across rounds
-    CORNER_PENALTY_WEIGHT = 10  # Weight for corner position penalty
+    GENDER_ALTERNATION_WEIGHT = weights.get(str(Weights.GENDER_ALTERNATION), 150)  # Weight for gender alternation
+    PREFERRED_NEIGHBOR_WEIGHT = weights.get(str(Weights.PREFERRED_NEIGHBOR), 20)  # Weight for preferred neighbors
+    EXCLUDED_NEIGHBOR_WEIGHT = weights.get(str(Weights.EXCLUDED_NEIGHBOR), 50)   # Weight for excluded neighbors
+    REPEAT_NEIGHBOR_WEIGHT = weights.get(str(Weights.REPEAT_NEIGHBOR), 15)     # Weight for repeat neighbors across rounds
+    CORNER_PENALTY_WEIGHT = weights.get(str(Weights.CORNER), 10)  # Weight for corner position penalty
 
     
     # Ensure same_gender_ok is a list
@@ -622,7 +625,7 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
     cost_breakdown = st.expander("Cost Function Breakdown", expanded=False)
     
     # Create container for problematic guests
-    problematic_guests = st.expander("Problematic Guests", expanded=False)
+    problematic_guests = st.expander("Guest Costs", expanded=False)
     
     # Lists to track progress
     iterations = []
@@ -1376,6 +1379,78 @@ def import_export_settings():
         st.sidebar.write("Settings preview:")
         st.sidebar.json(current_settings)
 
+def set_weights():
+    with st.sidebar.expander("Optimization Weights"):
+        st.markdown("""
+            Adjust the weights for different optimization criteria. Higher values give more importance to that criterion.
+        """)
+        
+        settings = load_settings()
+        weights_dict = settings.get("weights", {}) if "weights" in settings else {
+            "preferred_neighbour": 20.0,
+            "excluded_neighbour": 50.0,
+            "gender": 150.0,
+            "repeated_neighbour": 15.0,
+            "corner": 10.0
+        }
+        
+        # Create sliders for each weight
+        updated_weights = {}
+        
+        # Use the correct keys from the settings file
+        preferred_value = int(weights_dict.get("preferred_neighbour", 20))
+        updated_weights["preferred_neighbour"] = st.slider(
+            "Preferred Neighbor", 
+            min_value=0, 
+            max_value=200, 
+            value=preferred_value,
+            step=1,
+            help="Higher values give more importance to seating people next to their preferred neighbors."
+        )
+        
+        excluded_value = int(weights_dict.get("excluded_neighbour", 50))
+        updated_weights["excluded_neighbour"] = st.slider(
+            "Excluded Neighbors", 
+            min_value=0, 
+            max_value=200, 
+            value=excluded_value,
+            step=1,
+            help="Higher values give more importance to avoiding seating people next to their excluded neighbors."
+        )
+        
+        gender_value = int(weights_dict.get("gender", 150))
+        updated_weights["gender"] = st.slider(
+            "Gender Alternation", 
+            min_value=0, 
+            max_value=200, 
+            value=gender_value,
+            step=1,
+            help="Higher values give more importance to alternating genders at the table."
+        )
+        
+        repeat_value = int(weights_dict.get("repeated_neighbour", 15))
+        updated_weights["repeated_neighbour"] = st.slider(
+            "Repeated Neighbor", 
+            min_value=0, 
+            max_value=200, 
+            value=repeat_value,
+            step=1,
+            help="Higher values give more importance to avoiding repeat neighbors across different rounds."
+        )
+        
+        corner_value = int(weights_dict.get("corner", 10))
+        updated_weights["corner"] = st.slider(
+            "Repeated corner position", 
+            min_value=0, 
+            max_value=200, 
+            value=corner_value,
+            step=1,
+            help="Higher values give more importance to avoiding the same person sitting in corner positions repeatedly."
+        )
+        
+        # Store the updated weights in session state
+        st.session_state["weights"] = updated_weights
+
 def main():
     st.set_page_config(layout="wide")
 
@@ -1390,44 +1465,8 @@ def main():
     set_fixed_assignments()
     set_same_gender_ok()
     set_groups()
+    set_weights()
 
-    
-    # # Create example preferred neighbors
-    # st.session_state[str(Settings.PREFERRED_NEIGHBORS)] = {
-    #     "Johan": ["Margot", "Cecilia"],
-    #     "Ludmilla": ["David"],
-    # }
-    
-    # # Create example excluded neighbors
-    # st.session_state[str(Settings.EXCLUDED_NEIGHBORS)] = {
-    #     "Johan": ["Ludmilla"],
-    #     "Cecilia": ["Bengt"],
-    # }
-    
-    # Create example of people who are okay sitting with the same gender
-    #st.session_state[str(Settings.SAME_GENDER_OK)] = ["Lea", "Sophie", "Eliza"]
-    
-    # # Create example of groups who are okay to sit together repeatedly
-    # st.session_state[str(Settings.REPEAT_OK_GROUPS)] = [
-    #     ["Lea", "Sophie", "Eliza"],  # A group of close friends
-    # ]
-    
-    # # Display the preferences for reference
-    # with st.expander("Current Preferences"):
-    #     st.markdown("#### Preferred Neighbors:")
-    #     for person, neighbors in st.session_state.preferred_neighbors.items():
-    #         st.write(f"- {person}: {', '.join(neighbors)}")
-        
-    #     st.markdown("#### Excluded Neighbors:")
-    #     for person, neighbors in st.session_state.excluded_neighbors.items():
-    #         st.write(f"- {person}: {', '.join(neighbors)}")
-            
-    #     st.markdown("#### People OK with Same Gender Neighbors:")
-    #     st.write(", ".join(st.session_state.same_gender_ok))
-        
-    #     st.markdown("#### Groups OK to Sit Together Repeatedly:")
-    #     for i, group in enumerate(st.session_state.repeat_ok_groups):
-    #         st.write(f"- Group {i+1}: {', '.join(group)}")
     
     TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state[str(Settings.TABLE_DEFINITIONS)])
 
