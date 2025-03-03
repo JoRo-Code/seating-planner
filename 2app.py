@@ -89,6 +89,7 @@ def compute_seat_neighbors(tables):
                 }
     return neighbors
 
+
 def parse_table_definitions(text):
     lines = text.strip().splitlines()
     tables_list = []
@@ -812,7 +813,7 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     if seat in arrangement:
                         person = arrangement[seat]
                         if person in preferred_neighbors:
-                            for neighbor_seat in seat_neighbors[seat]["all"]:
+                            for neighbor_seat in seat_neighbors[seat]["side"]:
                                 if neighbor_seat in arrangement:
                                     neighbor = arrangement[neighbor_seat]
                                     # Reward preferred neighbors
@@ -831,7 +832,7 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     if seat in arrangement:
                         person = arrangement[seat]
                         if person in excluded_neighbors:
-                            for neighbor_seat in seat_neighbors[seat]["all"]:
+                            for neighbor_seat in seat_neighbors[seat]["side"]:
                                 if neighbor_seat in arrangement:
                                     neighbor = arrangement[neighbor_seat]
                                     # Heavily penalize excluded neighbors
