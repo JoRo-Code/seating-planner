@@ -131,7 +131,7 @@ def generate_seats(tables):
 
 ##### UI
 
-def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_round=None, round_idx=None, highlight_guest=None, all_arrangements=None):
+def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_round=None, round_idx=None, highlight_guest=None, all_arrangements=None, show_locked_seats=True):
     num_cols = tables[table_id]
     cell_style_base = (
         "width:60px; height:60px; border:1px solid #000; display:flex; "
@@ -182,7 +182,7 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
     
     # Get locked seats for this round
     locked_seats = set()
-    if locked_seats_per_round and round_idx is not None and round_idx in locked_seats_per_round:
+    if show_locked_seats and locked_seats_per_round and round_idx is not None and round_idx in locked_seats_per_round:
         for seat_label, _ in locked_seats_per_round[round_idx].items():
             seat_tuple = seat_label_to_tuple(seat_label, tables, {table_id: chr(65 + table_id)})
             if seat_tuple and seat_tuple[0] == table_id:
@@ -484,13 +484,16 @@ def set_tables():
 def show_arrangements(arrangements, tables, table_letters):    
     st.markdown("## Arrangements") 
     
-    cols = st.columns([1, 1, 5])  
+    cols = st.columns([1, 1, 1, 3])  
     with cols[0]:
         tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=3, step=1)
     
     with cols[1]:
         highlight_guest = st.selectbox("Highlight guest", ["None"] + sorted(list(set([guest for arr in arrangements for guest in arr.values()]))))
         highlight_guest = None if highlight_guest == "None" else highlight_guest
+    
+    with cols[2]:
+        show_locked_seats = st.checkbox("Show locked seats", value=True)
     
     # Display legend once at the top if a guest is highlighted
     if highlight_guest:
@@ -501,6 +504,14 @@ def show_arrangements(arrangements, tables, table_letters):
           <span style="background-color:#ffaa99; padding:2px 5px; margin-right:10px;">Current Diagonal Neighbors</span>
           <span style="background-color:#ccccff; padding:2px 5px; margin-right:10px;">All Round Direct Neighbors</span>
           <span style="background-color:#ffddcc; padding:2px 5px;">All Round Diagonal Neighbors</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Add legend for locked seats if they're being shown
+    if show_locked_seats:
+        st.markdown("""
+        <div style="margin-bottom:15px;">
+          <span style="border:2px solid #ff0000; padding:2px 5px;">Locked Seat</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -525,7 +536,8 @@ def show_arrangements(arrangements, tables, table_letters):
                             locked_seats_per_round=st.session_state.get(str(Settings.FIXED_ASSIGNMENTS)+_FROM_INPUT),
                             round_idx=round_idx,
                             highlight_guest=highlight_guest,
-                            all_arrangements=arrangements
+                            all_arrangements=arrangements,
+                            show_locked_seats=show_locked_seats
                         )
                         # Calculate dynamic height and width based on number of seats
                         table_height = max(150, 100 + (tables[table_id] // 8) * 50)
