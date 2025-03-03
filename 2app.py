@@ -51,42 +51,42 @@ DEFAULT_SETTINGS = json.load(open("default_settings.json", "r", encoding="utf-8"
 
 def compute_seat_neighbors(tables):
     """
-    Compute neighbors for each seat.
-    Returns a dictionary mapping (table_id, row, col) to a dictionary with keys:
-    - "side": list of side neighbors (left/right)
-    - "front": list of front neighbors (across the table)
-    - "all": list of all neighbors
+    Compute neighbors for each seat in the tables.
+    Returns a dictionary mapping each seat to its neighbors.
     """
     neighbors = {}
-    
     for table_id, seats_per_side in tables.items():
         for row in [0, 1]:
             for col in range(seats_per_side):
                 seat = (table_id, row, col)
                 side_neighbors = []
                 front_neighbors = []
+                diagonal_neighbors = []
                 
-                # Left neighbor
+                # Side neighbors (left and right)
                 if col > 0:
-                    side_neighbors.append((table_id, row, col - 1))
-                
-                # Right neighbor
+                    side_neighbors.append((table_id, row, col - 1))  # Left
                 if col < seats_per_side - 1:
-                    side_neighbors.append((table_id, row, col + 1))
+                    side_neighbors.append((table_id, row, col + 1))  # Right
                 
-                # Front neighbor (across the table)
-                opposite_row = 1 if row == 0 else 0
-                front_neighbors.append((table_id, opposite_row, col))
+                # Front neighbors (across the table)
+                front_neighbors.append((table_id, 1 - row, col))  # Directly across
                 
-                # Store all neighbors
-                all_neighbors = side_neighbors + front_neighbors
+                # Diagonal neighbors (across the table, diagonally)
+                if col > 0:
+                    diagonal_neighbors.append((table_id, 1 - row, col - 1))  # Diagonal left
+                if col < seats_per_side - 1:
+                    diagonal_neighbors.append((table_id, 1 - row, col + 1))  # Diagonal right
+                
+                # Combine all neighbors
+                all_neighbors = side_neighbors + front_neighbors + diagonal_neighbors
                 
                 neighbors[seat] = {
                     "side": side_neighbors,
                     "front": front_neighbors,
+                    "diagonal": diagonal_neighbors,
                     "all": all_neighbors
                 }
-    
     return neighbors
 
 def parse_table_definitions(text):
@@ -131,62 +131,91 @@ def generate_seats(tables):
 
 ##### UI
 
-def generate_arrangement_html(arrangement, table_id, tables):
-    """
-    Generates an HTML representation of one table for one seating arrangement.
-    - arrangement: dict mapping seat (table, row, col) to occupant name.
-
-    """
+def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_round=None, round_idx=None, highlight_guest=None, all_arrangements=None):
     num_cols = tables[table_id]
-    cell_style = (
+    cell_style_base = (
         "width:60px; height:60px; border:1px solid #000; display:flex; "
         "align-items:center; justify-content:center; margin:1px; font-size:12px; font-weight:bold;"
         "text-align:center; word-break:break-word; overflow:hidden;"
     )
-    def get_bg_color():
-        return "#ffffff"
+    
+    # Get seat neighbors for highlighting
+    seat_neighbors = None
+    highlight_seat = None
+    
+    # Track all neighbors of the highlighted guest across all rounds
+    all_round_direct_neighbors = set()
+    all_round_diagonal_neighbors = set()
+    
+    if highlight_guest and all_arrangements:
+        seat_neighbors = compute_seat_neighbors(tables)
         
-    top_html = "<div style='display:flex; justify-content:center; flex-wrap:nowrap;'>"
-    for col in range(num_cols):
-        seat = (table_id, 0, col)
-        occupant = arrangement.get(seat, "")
-        bg_color = get_bg_color()
-        top_html += f"<div style='{cell_style} background-color:{bg_color};'>{occupant}</div>"
-    top_html += "</div>"
+        # Find the seat of the highlighted guest in current round
+        for seat, guest in arrangement.items():
+            if guest == highlight_guest and seat[0] == table_id:
+                highlight_seat = seat
+                break
+        
+        # Collect all neighbors across all rounds
+        for r_idx, r_arrangement in enumerate(all_arrangements):
+            # Skip current round as we'll handle it separately
+            if r_idx == round_idx:
+                continue
+                
+            # Find the guest's seat in this round
+            guest_seat = None
+            for seat, guest in r_arrangement.items():
+                if guest == highlight_guest:
+                    guest_seat = seat
+                    break
+            
+            if guest_seat:
+                # Add direct neighbors from this round
+                for neighbor_seat in seat_neighbors.get(guest_seat, {}).get("side", []) + seat_neighbors.get(guest_seat, {}).get("front", []):
+                    if neighbor_seat in r_arrangement:
+                        all_round_direct_neighbors.add(r_arrangement[neighbor_seat])
+                
+                # Add diagonal neighbors separately
+                for diagonal_seat in seat_neighbors.get(guest_seat, {}).get("diagonal", []):
+                    if diagonal_seat in r_arrangement:
+                        all_round_diagonal_neighbors.add(r_arrangement[diagonal_seat])
     
-    bottom_html = "<div style='display:flex; justify-content:center; flex-wrap:nowrap;'>"
-    for col in range(num_cols):
-        seat = (table_id, 1, col)
-        occupant = arrangement.get(seat, "")
-        bg_color = get_bg_color()
-        bottom_html += f"<div style='{cell_style} background-color:{bg_color};'>{occupant}</div>"
-    bottom_html += "</div>"
+    # Get locked seats for this round
+    locked_seats = set()
+    if locked_seats_per_round and round_idx is not None and round_idx in locked_seats_per_round:
+        for seat_label, _ in locked_seats_per_round[round_idx].items():
+            seat_tuple = seat_label_to_tuple(seat_label, tables, {table_id: chr(65 + table_id)})
+            if seat_tuple and seat_tuple[0] == table_id:
+                locked_seats.add(seat_tuple)
     
-    full_html = f"""
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body {{ font-family: sans-serif; margin:5px; padding:0; }}
-        </style>
-      </head>
-      <body>
-        {top_html}
-        {bottom_html}
-      </body>
-    </html>
-    """
-    return full_html
-
-def generate_arrangement_html(arrangement, table_id, tables):
-    num_cols = tables[table_id]
-    cell_style = (
-        "width:60px; height:60px; border:1px solid #000; display:flex; "
-        "align-items:center; justify-content:center; margin:1px; font-size:12px; font-weight:bold;"
-        "text-align:center; word-break:break-word; overflow:hidden;"
-    )
-    def get_bg_color():
-        return "#ffffff"
+    def get_cell_style(seat, occupant):
+        style = cell_style_base
+        bg_color = "#ffffff"  # Default white background
+        border = "1px solid #000"  # Default border
+        
+        # Highlight fixed seats with red border
+        if seat in locked_seats:
+            border = "2px solid #ff0000"  # Red border for fixed seats
+        
+        # Highlight the selected guest and their neighbors
+        if highlight_guest:
+            if occupant == highlight_guest:
+                bg_color = "#ffcc00"  # Yellow for selected guest
+            elif highlight_seat and seat_neighbors:
+                # Check if this is a direct neighbor in current round
+                if seat in seat_neighbors.get(highlight_seat, {}).get("side", []) + seat_neighbors.get(highlight_seat, {}).get("front", []):
+                    bg_color = "#99ff99"  # Light green for immediate direct neighbors
+                # Check if this is a diagonal neighbor in current round
+                elif seat in seat_neighbors.get(highlight_seat, {}).get("diagonal", []):
+                    bg_color = "#ffaa99"  # Light orange/salmon for diagonal neighbors
+            # Check if this is a neighbor from other rounds
+            elif occupant in all_round_direct_neighbors:
+                bg_color = "#ccccff"  # Light blue for direct neighbors in other rounds
+            # Check if this is a diagonal neighbor from other rounds
+            elif occupant in all_round_diagonal_neighbors:
+                bg_color = "#ffddcc"  # Lighter orange/peach for diagonal neighbors in other rounds
+        
+        return f"{style} background-color:{bg_color}; border:{border};"
     
     # Use flex with no wrapping and enable horizontal scrolling
     container_style = "display:flex; justify-content:center; flex-wrap:nowrap; overflow-x:auto;"
@@ -195,16 +224,16 @@ def generate_arrangement_html(arrangement, table_id, tables):
     for col in range(num_cols):
         seat = (table_id, 0, col)
         occupant = arrangement.get(seat, "")
-        bg_color = get_bg_color()
-        top_html += f"<div style='{cell_style} background-color:{bg_color};'>{occupant}</div>"
+        cell_style = get_cell_style(seat, occupant)
+        top_html += f"<div style='{cell_style}'>{occupant}</div>"
     top_html += "</div>"
     
     bottom_html = f"<div style='{container_style}'>"
     for col in range(num_cols):
         seat = (table_id, 1, col)
         occupant = arrangement.get(seat, "")
-        bg_color = get_bg_color()
-        bottom_html += f"<div style='{cell_style} background-color:{bg_color};'>{occupant}</div>"
+        cell_style = get_cell_style(seat, occupant)
+        bottom_html += f"<div style='{cell_style}'>{occupant}</div>"
     bottom_html += "</div>"
     
     full_html = f"""
@@ -459,12 +488,25 @@ def show_arrangements(arrangements, tables, table_letters):
     with cols[0]:
         tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=3, step=1)
     
+    with cols[1]:
+        highlight_guest = st.selectbox("Highlight guest", ["None"] + sorted(list(set([guest for arr in arrangements for guest in arr.values()]))))
+        highlight_guest = None if highlight_guest == "None" else highlight_guest
+    
+    # Display legend once at the top if a guest is highlighted
+    if highlight_guest:
+        st.markdown("""
+        <div style="margin-bottom:15px;">
+          <span style="background-color:#ffcc00; padding:2px 5px; margin-right:10px;">Selected Guest</span>
+          <span style="background-color:#99ff99; padding:2px 5px; margin-right:10px;">Current Direct Neighbors</span>
+          <span style="background-color:#ffaa99; padding:2px 5px; margin-right:10px;">Current Diagonal Neighbors</span>
+          <span style="background-color:#ccccff; padding:2px 5px; margin-right:10px;">All Round Direct Neighbors</span>
+          <span style="background-color:#ffddcc; padding:2px 5px;">All Round Diagonal Neighbors</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
     # Display each arrangement
     for round_idx, arrangement in enumerate(arrangements):
         st.markdown(f"### Arrangement {round_idx + 1}")
-        
-        # Create columns for each table
-        cols = st.columns(len(tables))
         
         # Display each table
         table_ids = sorted(tables.keys())
@@ -472,14 +514,23 @@ def show_arrangements(arrangements, tables, table_letters):
         for i in range(0, len(table_ids), tables_per_row):
             cols = st.columns(tables_per_row)
             for j, table_id in enumerate(table_ids[i:i+tables_per_row]):
-                with cols[j]:
-                    table_letter = table_letters[table_id]
-                    st.markdown(f"**Table {table_letter}**")
-                    html = generate_arrangement_html(arrangement, table_id, tables)
-                    # Calculate dynamic height and width based on number of seats
-                    table_height = max(150, 100 + (tables[table_id] // 8) * 50)
-                    calculated_width = tables[table_id] * 62  # Adjust this multiplier if needed
-                    components.html(html, height=table_height, width=calculated_width, scrolling=True)
+                if i + j < len(table_ids):
+                    with cols[j]:
+                        table_letter = table_letters[table_id]
+                        st.markdown(f"**Table {table_letter}**")
+                        html = generate_arrangement_html(
+                            arrangement, 
+                            table_id, 
+                            tables, 
+                            locked_seats_per_round=st.session_state.get(str(Settings.FIXED_ASSIGNMENTS)+_FROM_INPUT),
+                            round_idx=round_idx,
+                            highlight_guest=highlight_guest,
+                            all_arrangements=arrangements
+                        )
+                        # Calculate dynamic height and width based on number of seats
+                        table_height = max(150, 100 + (tables[table_id] // 8) * 50)
+                        calculated_width = tables[table_id] * 62  # Adjust this multiplier if needed
+                        components.html(html, height=table_height, width=calculated_width, scrolling=True)
 
 
 def seat_label_to_tuple(seat_label, TABLES, TABLE_LETTERS):
@@ -1642,8 +1693,8 @@ def main():
         show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
         
 
-    # Visualize seating for a specific guest
-    visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+    # # Visualize seating for a specific guest
+    # visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
 
 
 if __name__ == "__main__":
