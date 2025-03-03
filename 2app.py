@@ -644,8 +644,14 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
     GENDER_ALTERNATION_WEIGHT = weights.get(str(Weights.GENDER_ALTERNATION), 150)  # Weight for gender alternation
     PREFERRED_NEIGHBOR_WEIGHT = weights.get(str(Weights.PREFERRED_NEIGHBOR), 20)  # Weight for preferred neighbors
     EXCLUDED_NEIGHBOR_WEIGHT = weights.get(str(Weights.EXCLUDED_NEIGHBOR), 50)   # Weight for excluded neighbors
-    REPEAT_NEIGHBOR_WEIGHT = weights.get(str(Weights.REPEAT_NEIGHBOR), 15)     # Weight for repeat neighbors across rounds
+    REPEAT_NEIGHBOR_WEIGHT = weights.get(str(Weights.REPEAT_NEIGHBOR), 10)     # Weight for repeat neighbors across rounds
     CORNER_PENALTY_WEIGHT = weights.get(str(Weights.CORNER), 10)  # Weight for corner position penalty
+
+    # st.write(f"GENDER_ALTERNATION_WEIGHT: {GENDER_ALTERNATION_WEIGHT}")
+    # st.write(f"PREFERRED_NEIGHBOR_WEIGHT: {PREFERRED_NEIGHBOR_WEIGHT}")
+    # st.write(f"EXCLUDED_NEIGHBOR_WEIGHT: {EXCLUDED_NEIGHBOR_WEIGHT}")
+    # st.write(f"REPEAT_NEIGHBOR_WEIGHT: {REPEAT_NEIGHBOR_WEIGHT}")
+    # st.write(f"CORNER_PENALTY_WEIGHT: {CORNER_PENALTY_WEIGHT}")
 
     
     # Ensure same_gender_ok is a list
@@ -869,7 +875,7 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     continue
                 
                 # Apply increasing penalty for each repeat
-                repeat_penalty = sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
+                repeat_penalty = -sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
                 total_score += repeat_penalty  # Apply the penalty to the total score
                 if collect_components:
                     repeat_score += repeat_penalty
@@ -881,12 +887,12 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
         for person, rounds in corner_positions_by_person.items():
             if len(rounds) > 1:
                 # Apply exponential penalty for repeat corner positions
-                corner_penalty = ((len(rounds) - 1) ** 2) * CORNER_PENALTY_WEIGHT
-                total_score -= corner_penalty
+                corner_penalty = -((len(rounds) - 1) ** 2) * CORNER_PENALTY_WEIGHT
+                total_score += corner_penalty
                 if collect_components:
-                    corner_score -= corner_penalty
+                    corner_score += corner_penalty
                 if track_guest_costs:
-                    guest_costs[person]["corner"] += -corner_penalty
+                    guest_costs[person]["corner"] += corner_penalty
         
         if track_guest_costs:
             # Calculate total cost per guest
@@ -1431,20 +1437,20 @@ def set_weights():
         """)
         
         settings = load_settings()
-        weights_dict = settings.get("weights", {}) if "weights" in settings else {
-            "preferred_neighbour": 20.0,
-            "excluded_neighbour": 50.0,
-            "gender": 150.0,
-            "repeated_neighbour": 15.0,
-            "corner": 10.0
+        weights_dict = settings.get(str(Settings.WEIGHTS), {}) if "weights" in settings else {
+            str(Weights.PREFERRED_NEIGHBOR): 20.0,
+            str(Weights.EXCLUDED_NEIGHBOR): 50.0,
+            str(Weights.GENDER_ALTERNATION): 150.0,
+            str(Weights.REPEAT_NEIGHBOR): 15.0,
+            str(Weights.CORNER): 10.0
         }
         
         # Create sliders for each weight
         updated_weights = {}
         
         # Use the correct keys from the settings file
-        preferred_value = int(weights_dict.get("preferred_neighbour", 20))
-        updated_weights["preferred_neighbour"] = st.slider(
+        preferred_value = int(weights_dict.get(str(Weights.PREFERRED_NEIGHBOR), 20))
+        updated_weights[str(Weights.PREFERRED_NEIGHBOR)] = st.slider(
             "Preferred Neighbor", 
             min_value=0, 
             max_value=200, 
@@ -1453,8 +1459,8 @@ def set_weights():
             help="Higher values give more importance to seating people next to their preferred neighbors."
         )
         
-        excluded_value = int(weights_dict.get("excluded_neighbour", 50))
-        updated_weights["excluded_neighbour"] = st.slider(
+        excluded_value = int(weights_dict.get(Weights.EXCLUDED_NEIGHBOR, 50))
+        updated_weights[str(Weights.EXCLUDED_NEIGHBOR)] = st.slider(
             "Excluded Neighbors", 
             min_value=0, 
             max_value=200, 
@@ -1463,8 +1469,8 @@ def set_weights():
             help="Higher values give more importance to avoiding seating people next to their excluded neighbors."
         )
         
-        gender_value = int(weights_dict.get("gender", 150))
-        updated_weights["gender"] = st.slider(
+        gender_value = int(weights_dict.get(Weights.GENDER_ALTERNATION, 150))
+        updated_weights[str(Weights.GENDER_ALTERNATION)] = st.slider(
             "Gender Alternation", 
             min_value=0, 
             max_value=200, 
@@ -1473,8 +1479,8 @@ def set_weights():
             help="Higher values give more importance to alternating genders at the table."
         )
         
-        repeat_value = int(weights_dict.get("repeated_neighbour", 15))
-        updated_weights["repeated_neighbour"] = st.slider(
+        repeat_value = int(weights_dict.get(Weights.REPEAT_NEIGHBOR, 150))
+        updated_weights[str(Weights.REPEAT_NEIGHBOR)] = st.slider(
             "Repeated Neighbor", 
             min_value=0, 
             max_value=200, 
@@ -1483,8 +1489,8 @@ def set_weights():
             help="Higher values give more importance to avoiding repeat neighbors across different rounds."
         )
         
-        corner_value = int(weights_dict.get("corner", 10))
-        updated_weights["corner"] = st.slider(
+        corner_value = int(weights_dict.get(Weights.CORNER, 10))
+        updated_weights[str(Weights.CORNER)] = st.slider(
             "Repeated corner position", 
             min_value=0, 
             max_value=200, 
