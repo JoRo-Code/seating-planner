@@ -143,9 +143,10 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
     seat_neighbors = None
     highlight_seat = None
     
-    # Track all neighbors of the highlighted guest across all rounds
-    all_round_direct_neighbors = set()
-    all_round_diagonal_neighbors = set()
+    # Track all neighbors of the highlighted guest across all rounds by type
+    all_side_neighbors = set()
+    all_front_neighbors = set()
+    all_diagonal_neighbors = set()
     
     if highlight_guest and all_arrangements:
         seat_neighbors = compute_seat_neighbors(tables)
@@ -156,12 +157,8 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
                 highlight_seat = seat
                 break
         
-        # Collect all neighbors across all rounds
-        for r_idx, r_arrangement in enumerate(all_arrangements):
-            # Skip current round as we'll handle it separately
-            if r_idx == round_idx:
-                continue
-                
+        # Collect all neighbors across all rounds (including current)
+        for r_arrangement in all_arrangements:
             # Find the guest's seat in this round
             guest_seat = None
             for seat, guest in r_arrangement.items():
@@ -170,15 +167,20 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
                     break
             
             if guest_seat:
-                # Add direct neighbors from this round
-                for neighbor_seat in seat_neighbors.get(guest_seat, {}).get("side", []) + seat_neighbors.get(guest_seat, {}).get("front", []):
+                # Add side neighbors
+                for neighbor_seat in seat_neighbors.get(guest_seat, {}).get("side", []):
                     if neighbor_seat in r_arrangement:
-                        all_round_direct_neighbors.add(r_arrangement[neighbor_seat])
+                        all_side_neighbors.add(r_arrangement[neighbor_seat])
                 
-                # Add diagonal neighbors separately
+                # Add front neighbors
+                for neighbor_seat in seat_neighbors.get(guest_seat, {}).get("front", []):
+                    if neighbor_seat in r_arrangement:
+                        all_front_neighbors.add(r_arrangement[neighbor_seat])
+                
+                # Add diagonal neighbors
                 for diagonal_seat in seat_neighbors.get(guest_seat, {}).get("diagonal", []):
                     if diagonal_seat in r_arrangement:
-                        all_round_diagonal_neighbors.add(r_arrangement[diagonal_seat])
+                        all_diagonal_neighbors.add(r_arrangement[diagonal_seat])
     
     # Get locked seats for this round
     locked_seats = set()
@@ -197,23 +199,19 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
         if seat in locked_seats:
             border = "2px solid #ff0000"  # Red border for fixed seats
         
-        # Highlight the selected guest and their neighbors
+        # Highlight the selected guest and their neighbors with priority
         if highlight_guest:
             if occupant == highlight_guest:
                 bg_color = "#ffcc00"  # Yellow for selected guest
-            elif highlight_seat and seat_neighbors:
-                # Check if this is a direct neighbor in current round
-                if seat in seat_neighbors.get(highlight_seat, {}).get("side", []) + seat_neighbors.get(highlight_seat, {}).get("front", []):
-                    bg_color = "#99ff99"  # Light green for immediate direct neighbors
-                # Check if this is a diagonal neighbor in current round
-                elif seat in seat_neighbors.get(highlight_seat, {}).get("diagonal", []):
-                    bg_color = "#ffaa99"  # Light orange/salmon for diagonal neighbors
-            # Check if this is a neighbor from other rounds
-            elif occupant in all_round_direct_neighbors:
-                bg_color = "#ccccff"  # Light blue for direct neighbors in other rounds
-            # Check if this is a diagonal neighbor from other rounds
-            elif occupant in all_round_diagonal_neighbors:
-                bg_color = "#ffddcc"  # Lighter orange/peach for diagonal neighbors in other rounds
+            # Priority 1: Side neighbors (highest interaction)
+            elif occupant in all_side_neighbors:
+                bg_color = "#99ff99"  # Light green for side neighbors
+            # Priority 2: Front neighbors (across table)
+            elif occupant in all_front_neighbors:
+                bg_color = "#ccffcc"  # Lighter green for front neighbors
+            # Priority 3: Diagonal neighbors (lowest interaction)
+            elif occupant in all_diagonal_neighbors:
+                bg_color = "#add8e6"  # Light blue for diagonal neighbors
         
         return f"{style} background-color:{bg_color}; border:{border};"
     
@@ -336,9 +334,7 @@ def import_settings():
 
 def set_same_gender_ok():
     with st.sidebar.expander("Gender Neutral"):
-        st.markdown("""
-            Name1, Name2, ...
-        """)
+        settings = load_settings()
         settings = load_settings()
         same_gender_ok_input = st.text_area("These are not penalized for sitting with the same gender", value=get_setting(settings, Settings.SAME_GENDER_OK), height=150, key=str(Settings.SAME_GENDER_OK))
         
@@ -360,8 +356,8 @@ def set_groups():
         for line in groups_input.splitlines():
             groups.append(line.strip().split(","))
         st.session_state[str(Settings.REPEAT_OK_GROUPS)+_FROM_INPUT] = groups
-        
-        st.caption(f"Number of groups: {len(st.session_state.repeat_ok_groups)}")
+        st.caption(f"Number of groups: {len(st.session_state.repeat_ok_groups_from_input)}")
+        st.caption(f"People in groups: {len([person for group in st.session_state.repeat_ok_groups_from_input for person in group])}")
 
 def parse_neighbor_relationships(input_text):
     """
@@ -385,9 +381,6 @@ def parse_neighbor_relationships(input_text):
 
 def set_preferred_neighbors():
     with st.sidebar.expander("Preferred Neighbors"):
-        st.markdown("""
-            Each line: Name: Preferred Name1, Preferred Name2, ...
-        """)
         settings = load_settings()
         preferred_neighbors_input = st.text_area("Preferred Neighbors", 
                                                value=get_setting(settings, Settings.PREFERRED_NEIGHBORS), 
@@ -401,9 +394,6 @@ def set_preferred_neighbors():
 
 def set_excluded_neighbors():
     with st.sidebar.expander("Excluded Neighbors"):
-        st.markdown("""
-            Each line: Name: Excluded Name1, Excluded Name2, ...
-        """)
         settings = load_settings()
         excluded_neighbors_input = st.text_area("Excluded Neighbors", 
                                               value=get_setting(settings, Settings.EXCLUDED_NEIGHBORS), 
@@ -499,11 +489,10 @@ def show_arrangements(arrangements, tables, table_letters):
     if highlight_guest:
         st.markdown("""
         <div style="margin-bottom:15px;">
-          <span style="background-color:#ffcc00; padding:2px 5px; margin-right:10px;">Selected Guest</span>
-          <span style="background-color:#99ff99; padding:2px 5px; margin-right:10px;">Current Direct Neighbors</span>
-          <span style="background-color:#ffaa99; padding:2px 5px; margin-right:10px;">Current Diagonal Neighbors</span>
-          <span style="background-color:#ccccff; padding:2px 5px; margin-right:10px;">All Round Direct Neighbors</span>
-          <span style="background-color:#ffddcc; padding:2px 5px;">All Round Diagonal Neighbors</span>
+          <span style="background-color:#ffcc00; padding:2px 5px; margin-right:10px; color:black;">Selected Guest</span>
+          <span style="background-color:#99ff99; padding:2px 5px; margin-right:10px; color:black;">Side Neighbors</span>
+          <span style="background-color:#ccffcc; padding:2px 5px; margin-right:10px; color:black;">Front Neighbors</span>
+          <span style="background-color:#add8e6; padding:2px 5px; color:black;">Diagonal Neighbors</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -511,7 +500,7 @@ def show_arrangements(arrangements, tables, table_letters):
     if show_locked_seats:
         st.markdown("""
         <div style="margin-bottom:15px;">
-          <span style="border:2px solid #ff0000; padding:2px 5px;">Locked Seat</span>
+          <span style="background-color:#ffffff; border:2px solid #ff0000; padding:2px 5px; color:black;">Locked Seat</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -1356,17 +1345,12 @@ def display_problematic_guests(guest_costs):
         st.bar_chart(worst_guests.set_index('Guest')['total'])
 
 def set_fixed_assignments():
-    with st.sidebar.expander("Fixed Assignments"):
-        st.markdown("""
-            Specify fixed seat assignments for specific rounds.
-            Format: Round#:SeatID:Name (e.g., 1:A1:Johan)
-        """)
-        
+    with st.sidebar.expander("Locked Seats"):
         settings = load_settings()
         fixed_assignments_text = st.text_area(
             "Fixed Assignments", 
             value=get_setting(settings, Settings.FIXED_ASSIGNMENTS),
-            height=150,
+            height=250,
             key=str(Settings.FIXED_ASSIGNMENTS),
             help="Format: Round#:SeatID:Name (e.g., 1:A1:Johan)"
         )
@@ -1436,7 +1420,7 @@ def import_export_settings():
         st.sidebar.json(current_settings)
 
 def set_weights():
-    with st.sidebar.expander("Optimization Weights"):
+    with st.sidebar.expander("Weights"):
         st.markdown("""
             Adjust the weights for different optimization criteria. Higher values give more importance to that criterion.
         """)
@@ -1653,11 +1637,12 @@ def main():
     cols = st.columns([1, 1, 5])  
     with cols[0]:
         num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=5, value=3, step=1)
+    with cols[1]:
         use_optimization = st.checkbox("Use optimization", value=True)
-        if use_optimization:
-            max_iterations = st.number_input("Optimization iterations", min_value=100, max_value=100000, value=5000, step=100)
-        else:
-            max_iterations = 0
+    
+    with cols[2]:
+        max_iterations = st.number_input("Optimization iterations", min_value=100, max_value=100000, value=5000, step=100)
+
 
     # Check if we have previous arrangements to build upon
     previous_arrangements = None
@@ -1666,9 +1651,7 @@ def main():
         if use_previous:
             previous_arrangements = st.session_state.previous_arrangements
     
-    # Add a prominent run button to trigger the optimization
-    st.markdown("### Generate New Arrangements")
-    run_button = st.button("Generate Seating Arrangements", key="generate_button", use_container_width=True)
+    run_button = st.button("Generate Seating Arrangements", key="generate_button", type="primary")
     
     if run_button or "arrangements" not in st.session_state:
         
