@@ -1,13 +1,13 @@
 {
-    "table_definitions": "A: 5\nB: 5\nC: 5\nD: 5\nE: 5\nF: 5", 
+    "table_definitions": "A: 5\nB: 5\nC: 5\nD: 5\nE: 5\nF: 5",
     "males": "Bengt\nDavid\nDaniel L\nErik\nDaniel T\nJoel\nJohan R\nLars\nEmil\nOla\nOlle\nOscar\nPer I\nPeter\nS\u00f6ren\nJohan D\nUrban\nThomas\nJan\nPer S\nNiclas\nJakob\nMats\nJonas\nAnders\nH\u00e5kan\nChristian\nStefan\nCalle",
     "females": "Anna Ho\nAnna Ha\nChristine\nCatharina\nCecilia\nEmelie\nHanna\nHelena N\nHelena R\nLiliana\nLotta\nLudmilla\nMonica\nSarah\nSophie\nTilde\nUlrika\nEliza\nCharlotte\nHelena E\nMargot\nInger\nAnnika\nMaria\nSara\nChristina B\nChristina P\n\u00c5sa\nElin\nKlara\nLea",
     "fixed_assignments": "1:A1:Johan\n1:A2:Ludmilla\n2:B1:Johan\n2:B2:Ludmilla",
-
-    "fixed_seat_assignments": "1: A1:Johan R\n2: B5:Ulrika\n3: C10:David",
-    "preferred_side_preferences_text": "Johan R: Liliana, Christina B, Margot, \nMargot: Bengt\nBengt: Margot\nLudmilla: David, Daniel L, Jakob, Urban, Johan D, Jan, Niclas, Mats\nEliza: Jonas, Oscar, Lea, Sophie\nJohan D: Ulrika, Christine, Sara, Sarah\nCatharina: Mats, Stefan",
-    "excluded_preferences_text": "John: Mary, Susan",
-    "special_cost_multipliers_text": "John: 100",
+    "preferred_neighbors": "Johan R: Margot, Cecilia\nLudmilla: David",
+    "excluded_neighbors": "Oscar: Tilde\nCecilia: Bengt",
+    "same_gender_ok": "Lea, Eliza, Sophie",
+    "repeat_ok_groups": "Lea, Eliza, Sophie",
+    
     "optimization_params": {
       "iterations": 20000,
       "initial_temp": 10.0,
@@ -15,14 +15,10 @@
       "num_rounds": 3
     },
     "weights": {
-      "side_neighbour_weight": 5.0,
-      "front_neighbour_weight": 2.0,
-      "diagonal_neighbour_weight": 1.0,
-      "corner_weight": 5.0,
-      "gender_weight": 50.0,
-      "fixed_weight": 2.0,
-      "empty_weight": 5.0,
-      "preferred_side_weight": 1.0,
-      "uniformity_weight": 0.0
+      "repeated_neighbour": 15.0,
+      "gender": 150.0,
+      "preferred_neighbour": 20.0,
+      "excluded_neighbour": 50.0,
+      "corner": 10.0
     }
   }

@@ -9,14 +9,38 @@ from collections import defaultdict
 import json
 from enum import Enum
 
+_FROM_INPUT = "_from_input"
+
+class Weights(Enum):
+    PREFERRED_NEIGHBOR = "preferred_neighbor"
+    EXCLUDED_NEIGHBOR = "excluded_neighbor"
+    SAME_GENDER_OK = "same_gender_ok"
+    REPEAT_OK_GROUPS = "repeat_ok_groups"
+    CORNER = "corner"
+    
+    def __str__(self):
+        return self.value
+
+class OptimizationParams(Enum):
+    ITERATIONS = "iterations"
+    INITIAL_TEMP = "initial_temp"
+    COOLING_RATE = "cooling_rate"
+    NUM_ROUNDS = "num_rounds"
+
+    def __str__(self):
+        return self.value
+
 class Settings(Enum):
     TABLE_DEFINITIONS = "table_definitions"
     MALES = "males"
     FEMALES = "females"
     FIXED_ASSIGNMENTS = "fixed_assignments"
-    PREFERRED_SIDE_PREFERENCES = "preferred_side_preferences"
-    EXCLUDED_PREFERENCES = "excluded_preferences"
-
+    PREFERRED_NEIGHBORS = "preferred_neighbors"
+    EXCLUDED_NEIGHBORS = "excluded_neighbors"
+    SAME_GENDER_OK = "same_gender_ok"
+    REPEAT_OK_GROUPS = "repeat_ok_groups"
+    WEIGHTS = "weights"
+    OPTIMIZATION_PARAMS = "optimization_params"
     def __str__(self):
         return self.value
 
@@ -281,6 +305,87 @@ def import_settings():
         except Exception as e:
             st.error(f"Error loading settings: {str(e)}")
 
+def set_same_gender_ok():
+    with st.sidebar.expander("Same Gender OK"):
+        st.markdown("""
+            Name1, Name2, ...
+        """)
+        settings = load_settings()
+        same_gender_ok_input = st.text_area("Same Gender OK", value=get_setting(settings, Settings.SAME_GENDER_OK), height=150, key=str(Settings.SAME_GENDER_OK))
+        
+        same_gender_ok = parse_lines(same_gender_ok_input)
+        st.session_state[str(Settings.SAME_GENDER_OK)+_FROM_INPUT] = same_gender_ok
+        
+        st.caption(f"Number of people who are okay with the same gender: {len(same_gender_ok)}")
+
+def set_groups():
+    with st.sidebar.expander("Groups"):
+        st.markdown("""
+            Each line represents a group of guests who are okay to sit together repeatedly. 
+            Names are separated with commas.
+        """)
+        settings = load_settings()
+        groups_input = st.text_area("Groups", value=get_setting(settings, Settings.REPEAT_OK_GROUPS), height=150, key=str(Settings.REPEAT_OK_GROUPS))
+        
+        groups = []
+        for line in groups_input.splitlines():
+            groups.append(line.strip().split(","))
+        st.session_state[str(Settings.REPEAT_OK_GROUPS)+_FROM_INPUT] = groups
+        
+        st.caption(f"Number of groups: {len(st.session_state.repeat_ok_groups)}")
+
+def parse_neighbor_relationships(input_text):
+    """
+    Parse neighbor relationships from text input.
+    Format: Name: Neighbor1, Neighbor2, ...
+    Returns a dictionary mapping names to lists of neighbors.
+    """
+    relationships = {}
+    for line in input_text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            parts = line.split(":")
+            if len(parts) == 2:
+                name = parts[0].strip()
+                neighbors = [x.strip() for x in parts[1].split(",") if x.strip()]
+                relationships[name] = neighbors
+        except Exception as e:
+            st.error(f"Error parsing line: {line}")
+    return relationships
+
+def set_preferred_neighbors():
+    with st.sidebar.expander("Preferred Neighbors"):
+        st.markdown("""
+            Each line: Name: Preferred Name1, Preferred Name2, ...
+        """)
+        settings = load_settings()
+        preferred_neighbors_input = st.text_area("Preferred Neighbors", 
+                                               value=get_setting(settings, Settings.PREFERRED_NEIGHBORS), 
+                                               height=150, 
+                                               key=str(Settings.PREFERRED_NEIGHBORS))
+        
+        preferred_neighbors = parse_neighbor_relationships(preferred_neighbors_input)
+        st.session_state[str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT] = preferred_neighbors
+        
+        st.caption(f"Number of people with preferences: {len(preferred_neighbors)}")
+
+def set_excluded_neighbors():
+    with st.sidebar.expander("Excluded Neighbors"):
+        st.markdown("""
+            Each line: Name: Excluded Name1, Excluded Name2, ...
+        """)
+        settings = load_settings()
+        excluded_neighbors_input = st.text_area("Excluded Neighbors", 
+                                              value=get_setting(settings, Settings.EXCLUDED_NEIGHBORS), 
+                                              height=150, 
+                                              key=str(Settings.EXCLUDED_NEIGHBORS))
+        
+        excluded_neighbors = parse_neighbor_relationships(excluded_neighbors_input)
+        st.session_state[str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT] = excluded_neighbors
+        
+        st.caption(f"Number of people with exclusions: {len(excluded_neighbors)}")
+
 def set_guests():
     with st.sidebar.expander("Guests"):
         st.markdown("""
@@ -291,7 +396,7 @@ def set_guests():
         
         male_text = st.text_area("Males (one per line)", 
                                   value=get_setting(settings, Settings.MALES), 
-                                  height=150,
+                                  height=300,
                                   key=str(Settings.MALES), 
                                   help="One male name per line.")
         male_count = len([name for name in male_text.splitlines() if name.strip()])
@@ -299,7 +404,7 @@ def set_guests():
         
         female_text = st.text_area("Females (one per line)", 
                                    value=get_setting(settings, Settings.FEMALES), 
-                                   height=150,
+                                   height=300,
                                    key=str(Settings.FEMALES), 
                                    help="One female name per line.")
         female_count = len([name for name in female_text.splitlines() if name.strip()])
@@ -319,6 +424,8 @@ def set_guests():
             person_genders[name] = "M"
         for name in female_names:
             person_genders[name] = "F"
+
+        st.session_state.person_genders = person_genders
         st.session_state.guests = guests
 
 def set_tables():
@@ -1224,7 +1331,7 @@ def set_fixed_assignments():
             except Exception:
                 st.error(f"Error parsing line: {line}")
         
-        st.session_state.locked_seats_per_round = dict(locked_seats_per_round)
+        st.session_state[str(Settings.FIXED_ASSIGNMENTS)+_FROM_INPUT] = dict(locked_seats_per_round)
 
 def import_export_settings():
     """Handle import and export of settings"""
@@ -1278,44 +1385,49 @@ def main():
     
     set_tables()
     set_guests()
+    set_preferred_neighbors()
+    set_excluded_neighbors()
     set_fixed_assignments()
+    set_same_gender_ok()
+    set_groups()
+
     
-    # Create example preferred neighbors
-    st.session_state.preferred_neighbors = {
-        "Johan": ["Margot", "Cecilia"],
-        "Ludmilla": ["David"],
-    }
+    # # Create example preferred neighbors
+    # st.session_state[str(Settings.PREFERRED_NEIGHBORS)] = {
+    #     "Johan": ["Margot", "Cecilia"],
+    #     "Ludmilla": ["David"],
+    # }
     
-    # Create example excluded neighbors
-    st.session_state.excluded_neighbors = {
-        "Johan": ["Ludmilla"],
-        "Cecilia": ["Bengt"],
-    }
+    # # Create example excluded neighbors
+    # st.session_state[str(Settings.EXCLUDED_NEIGHBORS)] = {
+    #     "Johan": ["Ludmilla"],
+    #     "Cecilia": ["Bengt"],
+    # }
     
     # Create example of people who are okay sitting with the same gender
-    st.session_state.same_gender_ok = ["Lea", "Sophie", "Eliza"]
+    #st.session_state[str(Settings.SAME_GENDER_OK)] = ["Lea", "Sophie", "Eliza"]
     
-    # Create example of groups who are okay to sit together repeatedly
-    st.session_state.repeat_ok_groups = [
-        ["Lea", "Sophie", "Eliza"],  # A group of close friends
-    ]
+    # # Create example of groups who are okay to sit together repeatedly
+    # st.session_state[str(Settings.REPEAT_OK_GROUPS)] = [
+    #     ["Lea", "Sophie", "Eliza"],  # A group of close friends
+    # ]
     
-    # Display the preferences for reference
-    with st.expander("Current Preferences"):
-        st.markdown("#### Preferred Neighbors:")
-        for person, neighbors in st.session_state.preferred_neighbors.items():
-            st.write(f"- {person}: {', '.join(neighbors)}")
+    # # Display the preferences for reference
+    # with st.expander("Current Preferences"):
+    #     st.markdown("#### Preferred Neighbors:")
+    #     for person, neighbors in st.session_state.preferred_neighbors.items():
+    #         st.write(f"- {person}: {', '.join(neighbors)}")
         
-        st.markdown("#### Excluded Neighbors:")
-        for person, neighbors in st.session_state.excluded_neighbors.items():
-            st.write(f"- {person}: {', '.join(neighbors)}")
+    #     st.markdown("#### Excluded Neighbors:")
+    #     for person, neighbors in st.session_state.excluded_neighbors.items():
+    #         st.write(f"- {person}: {', '.join(neighbors)}")
             
-        st.markdown("#### People OK with Same Gender Neighbors:")
-        st.write(", ".join(st.session_state.same_gender_ok))
+    #     st.markdown("#### People OK with Same Gender Neighbors:")
+    #     st.write(", ".join(st.session_state.same_gender_ok))
         
-        st.markdown("#### Groups OK to Sit Together Repeatedly:")
-        for i, group in enumerate(st.session_state.repeat_ok_groups):
-            st.write(f"- Group {i+1}: {', '.join(group)}")
+    #     st.markdown("#### Groups OK to Sit Together Repeatedly:")
+    #     for i, group in enumerate(st.session_state.repeat_ok_groups):
+    #         st.write(f"- Group {i+1}: {', '.join(group)}")
     
     TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state[str(Settings.TABLE_DEFINITIONS)])
 
@@ -1327,7 +1439,7 @@ def main():
         num_rounds = st.number_input("Number of arrangements", min_value=1, max_value=5, value=3, step=1)
         use_optimization = st.checkbox("Use optimization", value=True)
         if use_optimization:
-            max_iterations = st.number_input("Optimization iterations", min_value=100, max_value=100000, value=1000, step=100)
+            max_iterations = st.number_input("Optimization iterations", min_value=100, max_value=100000, value=5000, step=100)
         else:
             max_iterations = 0
 
@@ -1343,23 +1455,15 @@ def main():
     run_button = st.button("Generate Seating Arrangements", key="generate_button", use_container_width=True)
     
     if run_button or "arrangements" not in st.session_state:
-        # Get gender information
-        male_names = parse_lines(st.session_state[str(Settings.MALES)])
-        female_names = parse_lines(st.session_state[str(Settings.FEMALES)])
-        person_genders = {}
-        for name in male_names:
-            person_genders[name] = "M"
-        for name in female_names:
-            person_genders[name] = "F"
         
         # Get preferences
-        preferred_neighbors = st.session_state.preferred_neighbors if hasattr(st.session_state, 'preferred_neighbors') else {}
-        excluded_neighbors = st.session_state.excluded_neighbors if hasattr(st.session_state, 'excluded_neighbors') else {}
-        same_gender_ok = st.session_state.same_gender_ok if hasattr(st.session_state, 'same_gender_ok') else []
-        repeat_ok_groups = st.session_state.repeat_ok_groups if hasattr(st.session_state, 'repeat_ok_groups') else []
+        preferred_neighbors = st.session_state[str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT] if hasattr(st.session_state, str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT) else {}
+        excluded_neighbors = st.session_state[str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT] if hasattr(st.session_state, str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT) else {}
+        same_gender_ok = st.session_state[str(Settings.SAME_GENDER_OK)+_FROM_INPUT] if hasattr(st.session_state, str(Settings.SAME_GENDER_OK)+_FROM_INPUT) else []
+        repeat_ok_groups = st.session_state[str(Settings.REPEAT_OK_GROUPS)+_FROM_INPUT] if hasattr(st.session_state, str(Settings.REPEAT_OK_GROUPS)+_FROM_INPUT) else []
         
         # Generate arrangements
-        locked_seats_per_round = st.session_state.locked_seats_per_round if hasattr(st.session_state, 'locked_seats_per_round') else {}
+        locked_seats_per_round = st.session_state[str(Settings.FIXED_ASSIGNMENTS)+_FROM_INPUT] if hasattr(st.session_state, str(Settings.FIXED_ASSIGNMENTS)+_FROM_INPUT) else {}
         
         arrangements = run_optimization(
             TABLES, 
@@ -1368,7 +1472,7 @@ def main():
             locked_seats_per_round, 
             table_letters=TABLE_LETTERS,
             previous_arrangements=previous_arrangements,
-            person_genders=person_genders if use_optimization else None,
+            person_genders=st.session_state.person_genders if use_optimization else None,
             preferred_neighbors=preferred_neighbors if use_optimization else None,
             excluded_neighbors=excluded_neighbors if use_optimization else None,
             same_gender_ok=same_gender_ok if use_optimization else None,
