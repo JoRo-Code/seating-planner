@@ -819,13 +819,6 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                 
                 # Apply increasing penalty for each repeat
                 repeat_penalty = sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
-                total_score -= repeat_penalty
-                if collect_components:
-                    repeat_score -= repeat_penalty
-                if track_guest_costs:
-                    penalty_per_person = -repeat_penalty / 2
-                    guest_costs[person1]["repeat"] += penalty_per_person
-                    guest_costs[person2]["repeat"] += penalty_per_person
         
         # Penalize repeat corner positions
         for person, rounds in corner_positions_by_person.items():
@@ -1451,6 +1444,127 @@ def set_weights():
         # Store the updated weights in session state
         st.session_state["weights"] = updated_weights
 
+def visualize_guest_seating(arrangements, tables, table_letters):
+    """
+    Visualize seating arrangements for a specific guest across all rounds.
+    Highlights the selected guest, their immediate neighbors, and future interactions.
+    """
+    st.subheader("Guest Seating Visualization")
+    
+    seat_neighbors = compute_seat_neighbors(tables)
+    
+    # Get all unique guests from arrangements
+    all_guests = set()
+    for arrangement in arrangements:
+        all_guests.update(arrangement.values())
+    
+    # Sort guests alphabetically for the dropdown
+    sorted_guests = sorted(list(all_guests))
+    
+    # Create a dropdown to select a guest
+    selected_guest = st.selectbox("Select a guest to visualize:", sorted_guests)
+    
+    if selected_guest:
+        # Create tabs for each round
+        round_tabs = st.tabs([f"Round {i+1}" for i in range(len(arrangements))])
+        
+        # Track all neighbors across rounds for the selected guest
+        all_neighbors = set()
+        guest_positions = {}
+        
+        # First pass to collect all neighbors
+        for round_idx, arrangement in enumerate(arrangements):
+            # Find the seat of the selected guest in this round
+            guest_seat = None
+            for seat, guest in arrangement.items():
+                if guest == selected_guest:
+                    guest_seat = seat
+                    guest_positions[round_idx] = seat
+                    break
+            
+            if guest_seat:
+                # Get immediate neighbors in this round
+                for neighbor_seat in seat_neighbors[guest_seat]["all"]:
+                    if neighbor_seat in arrangement:
+                        neighbor = arrangement[neighbor_seat]
+                        all_neighbors.add(neighbor)
+        
+        # Now create visualizations for each round
+        for round_idx, arrangement in enumerate(arrangements):
+            with round_tabs[round_idx]:
+                # Create a grid for each table
+                table_cols = st.columns(len(tables))
+                
+                for table_id in sorted(tables.keys()):
+                    with table_cols[table_id]:
+                        table_letter = table_letters[table_id]
+                        st.markdown(f"**Table {table_letter}**")
+                        
+                        # Create a DataFrame to represent the table
+                        table_data = []
+                        for row in [0, 1]:
+                            for col in range(tables[table_id]):
+                                seat = (table_id, row, col)
+                                guest = arrangement.get(seat, "")
+                                
+                                # Determine the status of this guest for coloring
+                                status = "normal"
+                                if guest == selected_guest:
+                                    status = "selected"
+                                elif guest_positions.get(round_idx) and seat in seat_neighbors[guest_positions[round_idx]]["all"]:
+                                    status = "immediate_neighbor"
+                                elif guest in all_neighbors and guest != selected_guest:
+                                    status = "future_neighbor"
+                                
+                                seat_label = f"{table_letter}{col+1}" if row == 0 else f"{table_letter}{col+1+tables[table_id]}"
+                                
+                                table_data.append({
+                                    "Seat": seat_label,
+                                    "Guest": guest,
+                                    "Status": status
+                                })
+                        
+                        # Create a DataFrame and style it
+                        df = pd.DataFrame(table_data)
+                        
+                        # Apply styling based on status
+                        def highlight_cells(row):
+                            if row["Status"] == "selected":
+                                return ["background-color: #ffcc00"] * len(row)
+                            elif row["Status"] == "immediate_neighbor":
+                                return ["background-color: #99ff99"] * len(row)
+                            elif row["Status"] == "future_neighbor":
+                                return ["background-color: #ccccff"] * len(row)
+                            return [""] * len(row)
+                        
+                        styled_df = df.style.apply(highlight_cells, axis=1)
+                        st.dataframe(styled_df, hide_index=True)
+                
+                # Add a legend
+                st.markdown("""
+                **Legend:**
+                - <span style='background-color: #ffcc00; padding: 2px 5px;'>Selected Guest</span>
+                - <span style='background-color: #99ff99; padding: 2px 5px;'>Immediate Neighbor (this round)</span>
+                - <span style='background-color: #ccccff; padding: 2px 5px;'>Neighbor in Other Rounds</span>
+                """, unsafe_allow_html=True)
+                
+                # Show statistics for this round
+                if round_idx in guest_positions:
+                    guest_seat = guest_positions[round_idx]
+                    immediate_neighbors = []
+                    
+                    for neighbor_seat in seat_neighbors[guest_seat]["all"]:
+                        if neighbor_seat in arrangement:
+                            neighbor = arrangement[neighbor_seat]
+                            immediate_neighbors.append(neighbor)
+                    
+                    st.markdown(f"**Round {round_idx+1} Details:**")
+                    table_letter = table_letters[guest_seat[0]]
+                    row, col = guest_seat[1], guest_seat[2]
+                    seat_num = col+1 if row == 0 else col+1+tables[guest_seat[0]]
+                    st.markdown(f"- Seated at: Table {table_letter}, Seat {table_letter}{seat_num}")
+                    st.markdown(f"- Immediate neighbors: {', '.join(immediate_neighbors)}")
+
 def main():
     st.set_page_config(layout="wide")
 
@@ -1526,6 +1640,11 @@ def main():
     # Display the current arrangements
     if "arrangements" in st.session_state:
         show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+        
+
+    # Visualize seating for a specific guest
+    visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+
 
 if __name__ == "__main__":
     if "__streamlitmagic__" not in locals():
