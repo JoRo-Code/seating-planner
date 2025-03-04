@@ -169,17 +169,17 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
             
             if guest_seat:
                 # Add side neighbors
-                for neighbor_seat in seat_neighbors.get(guest_seat, {}).get("side", []):
+                for neighbor_seat in seat_neighbors[guest_seat]["side"]:
                     if neighbor_seat in r_arrangement:
                         all_side_neighbors.add(r_arrangement[neighbor_seat])
                 
                 # Add front neighbors
-                for neighbor_seat in seat_neighbors.get(guest_seat, {}).get("front", []):
+                for neighbor_seat in seat_neighbors[guest_seat]["front"]:
                     if neighbor_seat in r_arrangement:
                         all_front_neighbors.add(r_arrangement[neighbor_seat])
                 
                 # Add diagonal neighbors
-                for diagonal_seat in seat_neighbors.get(guest_seat, {}).get("diagonal", []):
+                for diagonal_seat in seat_neighbors[guest_seat]["diagonal"]:
                     if diagonal_seat in r_arrangement:
                         all_diagonal_neighbors.add(r_arrangement[diagonal_seat])
     
@@ -1369,6 +1369,13 @@ def set_fixed_assignments():
         
         # Parse fixed assignments
         locked_seats_per_round = defaultdict(dict)
+        
+        # Track names used in each round for duplicate detection
+        names_per_round = defaultdict(list)
+        
+        # Track parsing errors
+        parsing_errors = []
+        
         for line in fixed_assignments_text.strip().splitlines():
             if not line.strip():
                 continue
@@ -1379,12 +1386,39 @@ def set_fixed_assignments():
                     round_idx = int(round_num.strip()) - 1  # Convert to 0-based index
                     seat_id = seat_id.strip().upper()
                     name = name.strip()
+                    
                     # Check if this seat is already assigned for this round
                     if seat_id in locked_seats_per_round[round_idx]:
                         st.warning(f"Seat {seat_id} in round {round_num} is assigned multiple times. Last assignment will be used.")
+                    
+                    # Check if this name is already used in this round
+                    if name in names_per_round[round_idx]:
+                        st.warning(f"Name '{name}' is assigned multiple times in round {round_num}.")
+                    
+                    # Add to tracking collections
                     locked_seats_per_round[round_idx][seat_id] = name
-            except Exception:
-                st.error(f"Error parsing line: {line}")
+                    names_per_round[round_idx].append(name)
+            except Exception as e:
+                parsing_errors.append(f"Error parsing line: {line} - {str(e)}")
+        
+        # Show parsing errors at the end
+        for error in parsing_errors:
+            st.error(error)
+        
+        # Check if any assigned names are not in the guest list
+        if hasattr(st.session_state, 'guests'):
+            guests_set = set(st.session_state.guests)
+            unknown_guests = []
+            
+            for round_idx, assignments in locked_seats_per_round.items():
+                for seat_id, name in assignments.items():
+                    if name not in guests_set:
+                        unknown_guests.append((round_idx + 1, seat_id, name))
+            
+            if unknown_guests:
+                st.error("The following locked assignments use names not in the guest list:")
+                for round_num, seat_id, name in unknown_guests:
+                    st.error(f"Round {round_num}, Seat {seat_id}: '{name}'")
         
         st.session_state[str(Settings.FIXED_ASSIGNMENTS)+_FROM_INPUT] = dict(locked_seats_per_round)
 
