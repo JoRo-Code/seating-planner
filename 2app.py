@@ -1769,10 +1769,15 @@ def main():
             # Add the neighbor summary expander
             with st.expander("Overall Neighbour Summary"):
                 data = []
+                preferred_neighbors = st.session_state.get(str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT, {})
+                excluded_neighbors = st.session_state.get(str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT, {})
+                
                 for person, types_dict in st.session_state.neighbors_info.items():
                     data.append({
                         "Person": person,
                         "Gender": st.session_state.person_genders.get(person, "X"),
+                        "Preferred": ", ".join(sorted(preferred_neighbors.get(person, []))),
+                        "Excluded": ", ".join(sorted(excluded_neighbors.get(person, []))),
                         "Side Neighbours": ", ".join(sorted(types_dict["side"])),
                         "Front Neighbours": ", ".join(sorted(types_dict["front"])),
                         "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
@@ -1782,7 +1787,7 @@ def main():
                 st.dataframe(nbr_df, height=400)
 
     # Visualize seating for a specific guest
-    #visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+    visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
 
 
 if __name__ == "__main__":
