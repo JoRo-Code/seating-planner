@@ -1813,7 +1813,7 @@ def main():
                 st.dataframe(styled_df, height=400)
 
     # Visualize seating for a specific guest
-    visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+    #visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
 
 
 if __name__ == "__main__":
