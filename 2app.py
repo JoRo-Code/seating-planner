@@ -1754,7 +1754,7 @@ def main():
     st.set_page_config(layout="wide")
 
     st.title("SeatPlan v2")
-    st.markdown("5th March 2025 - 23:00")
+    st.markdown("6th March 2025 - 00:10")
     
     import_export_settings()
     
@@ -1780,7 +1780,7 @@ def main():
         use_optimization = st.checkbox("Use optimization", value=True)
     
     with cols[2]:
-        max_iterations = st.number_input("Optimization iterations", min_value=100, max_value=100000, value=5000, step=100)
+        max_iterations = st.number_input("Optimization iterations", min_value=0, max_value=100000, value=5000, step=100)
 
 
     # Check if we have previous arrangements to build upon
