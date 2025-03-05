@@ -474,6 +474,44 @@ def set_tables():
 def show_arrangements(arrangements, tables, table_letters):    
     st.markdown("## Arrangements") 
     
+    # Initialize neighbor tracking
+    neighbors_info = defaultdict(lambda: defaultdict(set))
+    corner_count = defaultdict(int)
+    
+    # Track corners for each table
+    for table_id, seats_per_side in tables.items():
+        for arrangement_idx, arrangement in enumerate(arrangements):
+            # Corner positions for this table
+            corners = [
+                (table_id, 0, 0),  # Top-left
+                (table_id, 0, seats_per_side - 1),  # Top-right
+                (table_id, 1, 0),  # Bottom-left
+                (table_id, 1, seats_per_side - 1)  # Bottom-right
+            ]
+            
+            # Count corner occurrences
+            for corner in corners:
+                if corner in arrangement:
+                    person = arrangement[corner]
+                    corner_count[person] += 1
+            
+            # Track neighbors
+            seat_neighbors = compute_seat_neighbors(tables)
+            for seat, person in arrangement.items():
+                for neighbor_seat in seat_neighbors[seat]["side"]:
+                    if neighbor_seat in arrangement:
+                        neighbors_info[person]["side"].add(arrangement[neighbor_seat])
+                for neighbor_seat in seat_neighbors[seat]["front"]:
+                    if neighbor_seat in arrangement:
+                        neighbors_info[person]["front"].add(arrangement[neighbor_seat])
+                for neighbor_seat in seat_neighbors[seat]["diagonal"]:
+                    if neighbor_seat in arrangement:
+                        neighbors_info[person]["diagonal"].add(arrangement[neighbor_seat])
+    
+    # Store in session state for the summary
+    st.session_state.neighbors_info = neighbors_info
+    st.session_state.corner_count = corner_count
+    
     cols = st.columns([1, 1, 1, 3])  
     with cols[0]:
         tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=3, step=1)
@@ -877,12 +915,6 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                 
                 # Apply increasing penalty for each repeat
                 repeat_penalty = -sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
-                total_score += repeat_penalty  # Apply the penalty to the total score
-                if collect_components:
-                    repeat_score += repeat_penalty
-                if track_guest_costs:
-                    guest_costs[person1]["repeat"] = guest_costs[person1].get("repeat", 0) + repeat_penalty/2
-                    guest_costs[person2]["repeat"] = guest_costs[person2].get("repeat", 0) + repeat_penalty/2
         
         # Penalize repeat corner positions
         for person, rounds in corner_positions_by_person.items():
@@ -1733,10 +1765,24 @@ def main():
     if "arrangements" in st.session_state:
         with st.spinner("Rendering seating arrangements..."):
             show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
-        
+            
+            # Add the neighbor summary expander
+            with st.expander("Overall Neighbour Summary"):
+                data = []
+                for person, types_dict in st.session_state.neighbors_info.items():
+                    data.append({
+                        "Person": person,
+                        "Gender": st.session_state.person_genders.get(person, "X"),
+                        "Side Neighbours": ", ".join(sorted(types_dict["side"])),
+                        "Front Neighbours": ", ".join(sorted(types_dict["front"])),
+                        "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
+                        "Corner Count": st.session_state.corner_count.get(person, 0)
+                    })
+                nbr_df = pd.DataFrame(data)
+                st.dataframe(nbr_df, height=400)
 
-    # # Visualize seating for a specific guest
-    # visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
+    # Visualize seating for a specific guest
+    #visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
 
 
 if __name__ == "__main__":
