@@ -481,44 +481,6 @@ def set_tables():
                 components.html(html, height=table_height, scrolling=True)
 
 def show_arrangements(arrangements, tables, table_letters):        
-    # Initialize neighbor tracking
-    neighbors_info = defaultdict(lambda: defaultdict(set))
-    corner_count = defaultdict(int)
-    
-    # Track corners for each table
-    for table_id, seats_per_side in tables.items():
-        for arrangement_idx, arrangement in enumerate(arrangements):
-            # Corner positions for this table
-            corners = [
-                (table_id, 0, 0),  # Top-left
-                (table_id, 0, seats_per_side - 1),  # Top-right
-                (table_id, 1, 0),  # Bottom-left
-                (table_id, 1, seats_per_side - 1)  # Bottom-right
-            ]
-            
-            # Count corner occurrences
-            for corner in corners:
-                if corner in arrangement:
-                    person = arrangement[corner]
-                    corner_count[person] += 1
-            
-            # Track neighbors
-            seat_neighbors = compute_seat_neighbors(tables)
-            for seat, person in arrangement.items():
-                for neighbor_seat in seat_neighbors[seat]["side"]:
-                    if neighbor_seat in arrangement:
-                        neighbors_info[person]["side"].add(arrangement[neighbor_seat])
-                for neighbor_seat in seat_neighbors[seat]["front"]:
-                    if neighbor_seat in arrangement:
-                        neighbors_info[person]["front"].add(arrangement[neighbor_seat])
-                for neighbor_seat in seat_neighbors[seat]["diagonal"]:
-                    if neighbor_seat in arrangement:
-                        neighbors_info[person]["diagonal"].add(arrangement[neighbor_seat])
-    
-    # Store in session state for the summary
-    st.session_state.neighbors_info = neighbors_info
-    st.session_state.corner_count = corner_count
-    
     cols = st.columns([1, 1, 1, 3])  
     with cols[0]:
         tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=3, step=1)
@@ -1748,6 +1710,46 @@ def show_arrangement_overview(arrangements, tables, table_letters):
                 styled_df = nbr_df.style.applymap(color_preferred_count, subset=['Preferred Count'])
                 styled_df = styled_df.applymap(color_excluded_count, subset=['Excluded Count'])
                 st.dataframe(styled_df, height=400)
+
+def compute_neighbors_info(arrangements, tables, table_letters):
+    # Initialize neighbor tracking
+    neighbors_info = defaultdict(lambda: defaultdict(set))
+    corner_count = defaultdict(int)
+    
+    # Track corners for each table
+    for table_id, seats_per_side in tables.items():
+        for arrangement_idx, arrangement in enumerate(arrangements):
+            # Corner positions for this table
+            corners = [
+                (table_id, 0, 0),  # Top-left
+                (table_id, 0, seats_per_side - 1),  # Top-right
+                (table_id, 1, 0),  # Bottom-left
+                (table_id, 1, seats_per_side - 1)  # Bottom-right
+            ]
+            
+            # Count corner occurrences
+            for corner in corners:
+                if corner in arrangement:
+                    person = arrangement[corner]
+                    corner_count[person] += 1
+            
+            # Track neighbors
+            seat_neighbors = compute_seat_neighbors(tables)
+            for seat, person in arrangement.items():
+                for neighbor_seat in seat_neighbors[seat]["side"]:
+                    if neighbor_seat in arrangement:
+                        neighbors_info[person]["side"].add(arrangement[neighbor_seat])
+                for neighbor_seat in seat_neighbors[seat]["front"]:
+                    if neighbor_seat in arrangement:
+                        neighbors_info[person]["front"].add(arrangement[neighbor_seat])
+                for neighbor_seat in seat_neighbors[seat]["diagonal"]:
+                    if neighbor_seat in arrangement:
+                        neighbors_info[person]["diagonal"].add(arrangement[neighbor_seat])
+    
+    # Store in session state for the summary
+    st.session_state.neighbors_info = neighbors_info
+    st.session_state.corner_count = corner_count
+
 def main():
     st.set_page_config(layout="wide")
 
@@ -1823,7 +1825,8 @@ def main():
     # Display the current arrangements
     if "arrangements" in st.session_state:
         with st.spinner("Rendering seating arrangements..."):
-            st.markdown("## Arrangements") 
+            st.markdown("## Arrangements")
+            compute_neighbors_info(st.session_state.arrangements, TABLES, TABLE_LETTERS)
             show_arrangement_overview(st.session_state.arrangements, TABLES, TABLE_LETTERS)
             show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
 
