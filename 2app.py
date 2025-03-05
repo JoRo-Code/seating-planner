@@ -1772,10 +1772,21 @@ def main():
                 preferred_neighbors = st.session_state.get(str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT, {})
                 excluded_neighbors = st.session_state.get(str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT, {})
                 
+                # Track seats for each person across rounds
+                person_seats = defaultdict(list)
+                for round_idx, arrangement in enumerate(st.session_state.arrangements):
+                    for seat, person in arrangement.items():
+                        table_letter = TABLE_LETTERS[seat[0]]
+                        row, col = seat[1], seat[2]
+                        seat_num = col + 1 if row == 0 else col + 1 + TABLES[seat[0]]
+                        seat_label = f"{table_letter}{seat_num}"
+                        person_seats[person].append(seat_label)
+                
                 for person, types_dict in st.session_state.neighbors_info.items():
                     data.append({
                         "Person": person,
                         "Gender": st.session_state.person_genders.get(person, "X"),
+                        "Seats": ", ".join(sorted(person_seats[person])),
                         "Preferred": ", ".join(sorted(preferred_neighbors.get(person, []))),
                         "Excluded": ", ".join(sorted(excluded_neighbors.get(person, []))),
                         "Side Neighbours": ", ".join(sorted(types_dict["side"])),
