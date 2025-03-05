@@ -1783,19 +1783,34 @@ def main():
                         person_seats[person].append(seat_label)
                 
                 for person, types_dict in st.session_state.neighbors_info.items():
+                    side_neighbors = set(types_dict["side"])
+                    preferred_count = len(side_neighbors.intersection(set(preferred_neighbors.get(person, []))))
+                    excluded_count = len(side_neighbors.intersection(set(excluded_neighbors.get(person, []))))
+                    
                     data.append({
                         "Person": person,
                         "Gender": st.session_state.person_genders.get(person, "X"),
                         "Seats": ", ".join(sorted(person_seats[person])),
                         "Preferred": ", ".join(sorted(preferred_neighbors.get(person, []))),
+                        "Preferred Count": preferred_count,
                         "Excluded": ", ".join(sorted(excluded_neighbors.get(person, []))),
+                        "Excluded Count": excluded_count,
                         "Side Neighbours": ", ".join(sorted(types_dict["side"])),
                         "Front Neighbours": ", ".join(sorted(types_dict["front"])),
                         "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
                         "Corner Count": st.session_state.corner_count.get(person, 0)
+
                     })
                 nbr_df = pd.DataFrame(data)
-                st.dataframe(nbr_df, height=400)
+                def color_preferred_count(val):
+                    return 'background-color: #006400; color: white' if val > 0 else ''
+                
+                def color_excluded_count(val):
+                    return 'background-color: #8B0000; color: white' if val > 0 else ''
+                
+                styled_df = nbr_df.style.applymap(color_preferred_count, subset=['Preferred Count'])
+                styled_df = styled_df.applymap(color_excluded_count, subset=['Excluded Count'])
+                st.dataframe(styled_df, height=400)
 
     # Visualize seating for a specific guest
     visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
