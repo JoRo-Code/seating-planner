@@ -366,6 +366,8 @@ def parse_neighbor_relationships(input_text):
     Returns a dictionary mapping names to lists of neighbors.
     """
     relationships = {}
+    name_occurrences = {}  # Track how many times each name appears
+    
     for line in input_text.splitlines():
         if not line.strip():
             continue
@@ -373,10 +375,17 @@ def parse_neighbor_relationships(input_text):
             parts = line.split(":")
             if len(parts) == 2:
                 name = parts[0].strip()
+                name_occurrences[name] = name_occurrences.get(name, 0) + 1
                 neighbors = [x.strip() for x in parts[1].split(",") if x.strip()]
                 relationships[name] = neighbors
         except Exception as e:
             st.error(f"Error parsing line: {line}")
+    
+    # Alert about duplicate entries
+    duplicate_names = [name for name, count in name_occurrences.items() if count > 1]
+    if duplicate_names:
+        st.warning(f"You have duplicate entries for: {', '.join(duplicate_names)}")
+    
     return relationships
 
 def set_preferred_neighbors():
