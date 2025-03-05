@@ -1703,6 +1703,7 @@ def main():
     st.set_page_config(layout="wide")
 
     st.title("SeatPlan v2")
+    st.markdown("5th March 2025 - 17:52")
     
     import_export_settings()
     
