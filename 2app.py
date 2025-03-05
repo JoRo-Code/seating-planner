@@ -480,9 +480,7 @@ def set_tables():
                 table_height = max(150, 100 + (TABLES[table_id] // 8) * 50)
                 components.html(html, height=table_height, scrolling=True)
 
-def show_arrangements(arrangements, tables, table_letters):    
-    st.markdown("## Arrangements") 
-    
+def show_arrangements(arrangements, tables, table_letters):        
     # Initialize neighbor tracking
     neighbors_info = defaultdict(lambda: defaultdict(set))
     corner_count = defaultdict(int)
@@ -1699,11 +1697,62 @@ def visualize_guest_seating(arrangements, tables, table_letters):
                     st.markdown(f"- Seated at: Table {table_letter}, Seat {table_letter}{seat_num}")
                     st.markdown(f"- Immediate neighbors: {', '.join(immediate_neighbors)}")
 
+def show_arrangement_overview(arrangements, tables, table_letters):            
+            # Add the neighbor summary expander
+            with st.expander("Overall Neighbour Summary"):
+                data = []
+                preferred_neighbors = st.session_state.get(str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT, {})
+                excluded_neighbors = st.session_state.get(str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT, {})
+                
+                # Track seats for each person across rounds
+                person_seats = defaultdict(list)
+                for round_idx, arrangement in enumerate(arrangements):
+                    for seat, person in arrangement.items():
+                        table_letter = table_letters[seat[0]]
+                        row, col = seat[1], seat[2]
+                        seat_num = col + 1 if row == 0 else col + 1 + tables[seat[0]]
+                        # Store tuple of (round_idx, seat_label) for sorting
+                        person_seats[person].append((round_idx, f"{table_letter}{seat_num}"))
+                
+                # Sort by round_idx and convert to comma-separated string of just the seat labels
+                for person in person_seats:
+                    sorted_seats = sorted(person_seats[person], key=lambda x: x[0])
+                    person_seats[person] = ", ".join(seat_label for _, seat_label in sorted_seats)
+                
+                for person, types_dict in st.session_state.neighbors_info.items():
+                    side_neighbors = set(types_dict["side"])
+                    preferred_count = len(side_neighbors.intersection(set(preferred_neighbors.get(person, []))))
+                    excluded_count = len(side_neighbors.intersection(set(excluded_neighbors.get(person, []))))
+                    
+                    data.append({
+                        "Person": person,
+                        "Seats": person_seats[person],
+                        "Side Neighbours": ", ".join(sorted(types_dict["side"])),
+                        "Front Neighbours": ", ".join(sorted(types_dict["front"])),
+                        "Preferred": ", ".join(sorted(preferred_neighbors.get(person, []))),
+                        "Excluded": ", ".join(sorted(excluded_neighbors.get(person, []))),
+                        "Preferred Count": preferred_count,
+                        "Excluded Count": excluded_count,
+                        "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
+                        "Corner Count": st.session_state.corner_count.get(person, 0),
+                        "Gender": st.session_state.person_genders.get(person, "X"),
+
+                    })
+                nbr_df = pd.DataFrame(data)
+                def color_preferred_count(val):
+                    return 'background-color: #006400; color: white' if val > 0 else ''
+                
+                def color_excluded_count(val):
+                    return 'background-color: #8B0000; color: white' if val > 0 else ''
+                
+                styled_df = nbr_df.style.applymap(color_preferred_count, subset=['Preferred Count'])
+                styled_df = styled_df.applymap(color_excluded_count, subset=['Excluded Count'])
+                st.dataframe(styled_df, height=400)
 def main():
     st.set_page_config(layout="wide")
 
     st.title("SeatPlan v2")
-    st.markdown("5th March 2025 - 17:52")
+    st.markdown("5th March 2025 - 23:00")
     
     import_export_settings()
     
@@ -1774,53 +1823,9 @@ def main():
     # Display the current arrangements
     if "arrangements" in st.session_state:
         with st.spinner("Rendering seating arrangements..."):
+            st.markdown("## Arrangements") 
+            show_arrangement_overview(st.session_state.arrangements, TABLES, TABLE_LETTERS)
             show_arrangements(st.session_state.arrangements, TABLES, TABLE_LETTERS)
-            
-            # Add the neighbor summary expander
-            with st.expander("Overall Neighbour Summary"):
-                data = []
-                preferred_neighbors = st.session_state.get(str(Settings.PREFERRED_NEIGHBORS)+_FROM_INPUT, {})
-                excluded_neighbors = st.session_state.get(str(Settings.EXCLUDED_NEIGHBORS)+_FROM_INPUT, {})
-                
-                # Track seats for each person across rounds
-                person_seats = defaultdict(list)
-                for round_idx, arrangement in enumerate(st.session_state.arrangements):
-                    for seat, person in arrangement.items():
-                        table_letter = TABLE_LETTERS[seat[0]]
-                        row, col = seat[1], seat[2]
-                        seat_num = col + 1 if row == 0 else col + 1 + TABLES[seat[0]]
-                        seat_label = f"{table_letter}{seat_num}"
-                        person_seats[person].append(seat_label)
-                
-                for person, types_dict in st.session_state.neighbors_info.items():
-                    side_neighbors = set(types_dict["side"])
-                    preferred_count = len(side_neighbors.intersection(set(preferred_neighbors.get(person, []))))
-                    excluded_count = len(side_neighbors.intersection(set(excluded_neighbors.get(person, []))))
-                    
-                    data.append({
-                        "Person": person,
-                        "Gender": st.session_state.person_genders.get(person, "X"),
-                        "Seats": ", ".join(sorted(person_seats[person])),
-                        "Preferred": ", ".join(sorted(preferred_neighbors.get(person, []))),
-                        "Preferred Count": preferred_count,
-                        "Excluded": ", ".join(sorted(excluded_neighbors.get(person, []))),
-                        "Excluded Count": excluded_count,
-                        "Side Neighbours": ", ".join(sorted(types_dict["side"])),
-                        "Front Neighbours": ", ".join(sorted(types_dict["front"])),
-                        "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
-                        "Corner Count": st.session_state.corner_count.get(person, 0)
-
-                    })
-                nbr_df = pd.DataFrame(data)
-                def color_preferred_count(val):
-                    return 'background-color: #006400; color: white' if val > 0 else ''
-                
-                def color_excluded_count(val):
-                    return 'background-color: #8B0000; color: white' if val > 0 else ''
-                
-                styled_df = nbr_df.style.applymap(color_preferred_count, subset=['Preferred Count'])
-                styled_df = styled_df.applymap(color_excluded_count, subset=['Excluded Count'])
-                st.dataframe(styled_df, height=400)
 
     # Visualize seating for a specific guest
     #visualize_guest_seating(st.session_state.arrangements, TABLES, TABLE_LETTERS)
