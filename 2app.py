@@ -899,8 +899,7 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                                         if collect_components:
                                             excluded_score += penalty
                                         if track_guest_costs:
-                                            guest_costs[person]["excluded"] += penalty / 2
-                                            guest_costs[neighbor]["excluded"] += penalty / 2
+                                            guest_costs[person]["excluded"] += penalty
             
             # Collect neighbor pairs for this round
             for seat in seats:
@@ -933,10 +932,10 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     continue
                 
                 # Apply increasing penalty for each repeat
-                penalty = -sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
-                total_score += penalty
+                repeat_penalty = -sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
+                total_score += repeat_penalty
                 if collect_components:
-                    repeat_score += penalty
+                    repeat_score += repeat_penalty
                 if track_guest_costs:
                     guest_costs[person1]["repeat"] = guest_costs[person1].get("repeat", 0) + penalty/2
                     guest_costs[person2]["repeat"] = guest_costs[person2].get("repeat", 0) + penalty/2
