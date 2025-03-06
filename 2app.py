@@ -933,7 +933,13 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     continue
                 
                 # Apply increasing penalty for each repeat
-                repeat_penalty = -sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
+                penalty = -sum(range(len(rounds))) * REPEAT_NEIGHBOR_WEIGHT
+                total_score += penalty
+                if collect_components:
+                    repeat_score += penalty
+                if track_guest_costs:
+                    guest_costs[person1]["repeat"] = guest_costs[person1].get("repeat", 0) + penalty/2
+                    guest_costs[person2]["repeat"] = guest_costs[person2].get("repeat", 0) + penalty/2
         
         # Penalize repeat corner positions
         for person, rounds in corner_positions_by_person.items():
