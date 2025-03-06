@@ -1809,8 +1809,8 @@ def compute_neighbors_info(arrangements, tables, table_letters):
 def main():
     st.set_page_config(layout="wide")
 
-    st.title("SeatPlan v2")
-    st.markdown("6th March 2025 - 00:10")
+    st.title("SeatPlan v2.1")
+    st.markdown("6th March 2025 - 21:00")
     
     import_export_settings()
     
