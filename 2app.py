@@ -132,7 +132,7 @@ def generate_seats(tables):
 
 ##### UI
 
-def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_round=None, round_idx=None, highlight_guest=None, all_arrangements=None, show_locked_seats=True):
+def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_round=None, round_idx=None, highlight_guest=None, all_arrangements=None, show_locked_seats=True, show_gender=False):
     num_cols = tables[table_id]
     cell_style_base = (
         "width:60px; height:60px; border:1px solid #000; display:flex; "
@@ -196,6 +196,13 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
         bg_color = "#ffffff"  # Default white background
         border = "1px solid #000"  # Default border
         text_color = "#000000"  # Default black text
+        
+        # Show gender colors if enabled
+        if show_gender and occupant and occupant in st.session_state.person_genders:
+            if st.session_state.person_genders[occupant] == "M":
+                bg_color = "#add8e6"  # Light blue for males
+            else:
+                bg_color = "#e6b3e6"  # Light purple for females
         
         # Highlight fixed seats with red border
         if seat in locked_seats:
@@ -482,7 +489,7 @@ def set_tables():
                 components.html(html, height=table_height, scrolling=True)
 
 def show_arrangements(arrangements, tables, table_letters):        
-    cols = st.columns([1, 1, 1, 3])  
+    cols = st.columns([1, 1, 1, 1, 3])  
     with cols[0]:
         tables_per_row = st.number_input("Tables per row", min_value=1, max_value=5, value=3, step=1)
     
@@ -492,6 +499,9 @@ def show_arrangements(arrangements, tables, table_letters):
     
     with cols[2]:
         show_locked_seats = st.checkbox("Show locked seats", value=True)
+        
+    with cols[3]:
+        show_gender = st.checkbox("Show gender", value=False)
     
     # Display legend once at the top if a guest is highlighted
     if highlight_guest:
@@ -501,6 +511,15 @@ def show_arrangements(arrangements, tables, table_letters):
           <span style="background-color:#99ff99; padding:2px 5px; margin-right:10px; color:black;">Side Neighbors</span>
           <span style="background-color:#ccffcc; padding:2px 5px; margin-right:10px; color:black;">Front Neighbors</span>
           <span style="background-color:#add8e6; padding:2px 5px; color:black;">Diagonal Neighbors</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Display legend for gender if enabled
+    if show_gender:
+        st.markdown("""
+        <div style="margin-bottom:15px;">
+          <span style="background-color:#add8e6; padding:2px 5px; margin-right:10px;">Male</span>
+          <span style="background-color:#e6b3e6; padding:2px 5px;">Female</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -518,7 +537,7 @@ def show_arrangements(arrangements, tables, table_letters):
         
         # Display each table
         table_ids = sorted(tables.keys())
-
+        
         for i in range(0, len(table_ids), tables_per_row):
             cols = st.columns(tables_per_row)
             for j, table_id in enumerate(table_ids[i:i+tables_per_row]):
@@ -534,7 +553,8 @@ def show_arrangements(arrangements, tables, table_letters):
                             round_idx=round_idx,
                             highlight_guest=highlight_guest,
                             all_arrangements=arrangements,
-                            show_locked_seats=show_locked_seats
+                            show_locked_seats=show_locked_seats,
+                            show_gender=show_gender,
                         )
                         # Calculate dynamic height and width based on number of seats
                         table_height = max(150, 100 + (tables[table_id] // 8) * 50)
