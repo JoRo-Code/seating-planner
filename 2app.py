@@ -632,11 +632,11 @@ def run_optimization(tables, guests, num_rounds, locked_seats_per_round, table_l
         # Get locked guests and available guests
         locked_guests = set(arrangement.values())
         available_guests = [g for g in guests if g not in locked_guests]
+        available_males = [g for g in available_guests if person_genders.get(g) == "M"]
+        available_females = [g for g in available_guests if person_genders.get(g) == "F"]
         
         # For initial arrangement, separate by gender for alternating pattern
         if person_genders:
-            available_males = [g for g in available_guests if person_genders.get(g) == "M"]
-            available_females = [g for g in available_guests if person_genders.get(g) == "F"]
             
             # Initialize pattern starting with female in upper left
             for table_id in tables:
@@ -649,15 +649,27 @@ def run_optimization(tables, guests, num_rounds, locked_seats_per_round, table_l
                             is_female_position = ((row + col) % 2 == 0)
                             
                             if is_female_position:
+                                # Try to assign a female first, but if none available, try a male
                                 if available_females:
-                                    arrangement[seat] = available_females.pop(0)
-                                elif available_guests:
-                                    arrangement[seat] = available_guests.pop(0)
+                                    person = available_females.pop(0)
+                                elif available_males:  # If no females left, use males
+                                    person = available_males.pop(0)
+                                elif available_guests:  # Fallback to any remaining guest
+                                    person = available_guests.pop(0)
+                                else:
+                                    continue  # Skip if no guests available
+                                arrangement[seat] = person
                             else:
+                                # Try to assign a male first, but if none available, try a female
                                 if available_males:
-                                    arrangement[seat] = available_males.pop(0)
-                                elif available_guests:
-                                    arrangement[seat] = available_guests.pop(0)
+                                    person = available_males.pop(0)
+                                elif available_females:  # If no males left, use females
+                                    person = available_females.pop(0)
+                                elif available_guests:  # Fallback to any remaining guest
+                                    person = available_guests.pop(0)
+                                else:
+                                    continue  # Skip if no guests available
+                                arrangement[seat] = person
         
         arrangements.append(arrangement)
     
