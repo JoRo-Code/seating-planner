@@ -8,6 +8,7 @@ import copy
 from collections import defaultdict
 import json
 from enum import Enum
+import collections
 
 _FROM_INPUT = "_from_input"
 
@@ -1740,11 +1741,12 @@ def show_arrangement_overview(arrangements, tables, table_letters):
                     side_neighbors = set(types_dict["side"])
                     preferred_count = len(side_neighbors.intersection(set(preferred_neighbors.get(person, []))))
                     excluded_count = len(side_neighbors.intersection(set(excluded_neighbors.get(person, []))))
-                    
+                    repeat_count = len(types_dict["repeat"])
                     data.append({
                         "Person": person,
                         "Seats": person_seats[person],
                         "Side Neighbours": ", ".join(sorted(types_dict["side"])),
+                        "Repeat Neighbours": ", ".join(sorted(types_dict["repeat"])),
                         "Front Neighbours": ", ".join(sorted(types_dict["front"])),
                         "Preferred": ", ".join(sorted(preferred_neighbors.get(person, []))),
                         "Excluded": ", ".join(sorted(excluded_neighbors.get(person, []))),
@@ -1753,7 +1755,7 @@ def show_arrangement_overview(arrangements, tables, table_letters):
                         "Diagonal Neighbours": ", ".join(sorted(types_dict["diagonal"])),
                         "Corner Count": st.session_state.corner_count.get(person, 0),
                         "Gender": st.session_state.person_genders.get(person, "X"),
-
+                        "Repeat Neighbours Count": repeat_count,
                     })
                 nbr_df = pd.DataFrame(data)
                 def color_preferred_count(val):
@@ -1771,7 +1773,29 @@ def compute_neighbors_info(arrangements, tables, table_letters):
     neighbors_info = defaultdict(lambda: defaultdict(set))
     corner_count = defaultdict(int)
     
-    # Track corners for each table
+    # Track all side neighbors for each person across all arrangements
+    all_side_neighbors = defaultdict(list)
+    
+    # First pass: collect all side neighbors across all arrangements
+    for arrangement_idx, arrangement in enumerate(arrangements):
+        seat_neighbors = compute_seat_neighbors(tables)
+        for seat, person in arrangement.items():
+            for neighbor_seat in seat_neighbors[seat]["side"]:
+                if neighbor_seat in arrangement:
+                    neighbor = arrangement[neighbor_seat]
+                    # Add to the person's list of side neighbors
+                    all_side_neighbors[person].append(neighbor)
+                    # Add to the general neighbors info
+                    neighbors_info[person]["side"].add(neighbor)
+    
+    # Second pass: identify repeat neighbors
+    for person, all_neighbors in all_side_neighbors.items():
+        # Use Counter to find neighbors that appear more than once
+        neighbor_counts = collections.Counter(all_neighbors)
+        repeat_neighbors = [neighbor for neighbor, count in neighbor_counts.items() if count > 1]
+        neighbors_info[person]["repeat"] = set(repeat_neighbors)
+    
+    # Track corners and other neighbor types
     for table_id, seats_per_side in tables.items():
         for arrangement_idx, arrangement in enumerate(arrangements):
             # Corner positions for this table
@@ -1788,12 +1812,9 @@ def compute_neighbors_info(arrangements, tables, table_letters):
                     person = arrangement[corner]
                     corner_count[person] += 1
             
-            # Track neighbors
+            # Track front and diagonal neighbors
             seat_neighbors = compute_seat_neighbors(tables)
             for seat, person in arrangement.items():
-                for neighbor_seat in seat_neighbors[seat]["side"]:
-                    if neighbor_seat in arrangement:
-                        neighbors_info[person]["side"].add(arrangement[neighbor_seat])
                 for neighbor_seat in seat_neighbors[seat]["front"]:
                     if neighbor_seat in arrangement:
                         neighbors_info[person]["front"].add(arrangement[neighbor_seat])
