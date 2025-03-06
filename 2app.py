@@ -195,6 +195,7 @@ def generate_arrangement_html(arrangement, table_id, tables, locked_seats_per_ro
         style = cell_style_base
         bg_color = "#ffffff"  # Default white background
         border = "1px solid #000"  # Default border
+        text_color = "#000000"  # Default black text
         
         # Highlight fixed seats with red border
         if seat in locked_seats:
@@ -612,14 +613,31 @@ def run_optimization(tables, guests, num_rounds, locked_seats_per_round, table_l
         locked_guests = set(arrangement.values())
         available_guests = [g for g in guests if g not in locked_guests]
         
-        # Initial random placement
-        random.shuffle(available_guests)
-        for seat in seats:
-            if seat not in arrangement:
-                if available_guests:
-                    arrangement[seat] = available_guests.pop(0)
-                else:
-                    break
+        # For initial arrangement, separate by gender for alternating pattern
+        if person_genders:
+            available_males = [g for g in available_guests if person_genders.get(g) == "M"]
+            available_females = [g for g in available_guests if person_genders.get(g) == "F"]
+            
+            # Initialize pattern starting with female in upper left
+            for table_id in tables:
+                for row in [0, 1]:
+                    for col in range(tables[table_id]):
+                        seat = (table_id, row, col)
+                        if seat not in arrangement:
+                            # Determine parity of position (female in upper left, then alternate)
+                            # For even parity positions (both odd/both even indices), assign female
+                            is_female_position = ((row + col) % 2 == 0)
+                            
+                            if is_female_position:
+                                if available_females:
+                                    arrangement[seat] = available_females.pop(0)
+                                elif available_guests:
+                                    arrangement[seat] = available_guests.pop(0)
+                            else:
+                                if available_males:
+                                    arrangement[seat] = available_males.pop(0)
+                                elif available_guests:
+                                    arrangement[seat] = available_guests.pop(0)
         
         arrangements.append(arrangement)
     
