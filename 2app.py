@@ -1927,7 +1927,7 @@ def main():
     st.set_page_config(layout="wide")
 
     st.title("SeatPlan v2.1")
-    st.markdown("6th March 2025 - 21:30")
+    st.markdown("7th March 2025 - 14:43")
     
     import_export_settings()
     
