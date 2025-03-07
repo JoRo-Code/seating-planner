@@ -18,6 +18,7 @@ class Weights(Enum):
     GENDER_ALTERNATION = "gender_alternation"
     REPEAT_NEIGHBOR = "repeat_neighbor"
     CORNER = "corner"
+    SPECIAL_TABLE = "special_table"
     
     def __str__(self):
         return self.value
@@ -42,6 +43,7 @@ class Settings(Enum):
     REPEAT_OK_GROUPS = "repeat_ok_groups"
     WEIGHTS = "weights"
     OPTIMIZATION_PARAMS = "optimization_params"
+    SPECIAL_TABLES = "special_tables"
     def __str__(self):
         return self.value
 
@@ -352,6 +354,55 @@ def set_same_gender_ok():
         
         st.caption(f"Number of people who are okay with the same gender: {len(same_gender_ok)}")
 
+def set_special_tables():
+    """Configure special tables like host table and toastmaster table"""
+    with st.sidebar.expander("Special Tables"):
+        settings = load_settings()
+        special_tables_input = st.text_area(
+            "These tables penalize repeated guests on this table", 
+            value=get_setting(settings, Settings.SPECIAL_TABLES),
+            height=150,
+            key=str(Settings.SPECIAL_TABLES),
+            help="Format: TableLetter:Hosts\nExample: A:John,Mary\nB:Peter"
+        )
+                
+        special_tables = {}
+        for line in special_tables_input.splitlines():
+            if not line.strip():
+                continue
+            try:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    table_letter, hosts_str = parts
+                    table_letter = table_letter.strip().upper()
+                    
+                    # Validate table letter exists
+                    if table_letter not in [st.session_state.table_letters[t] for t in st.session_state.tables]:
+                        st.error(f"Invalid table letter '{table_letter}' in line: {line}")
+                        continue
+                    
+                    # Parse and validate host names
+                    hosts = []
+                    for name in hosts_str.split(","):
+                        name = name.strip()
+                        if name:
+                            if name not in st.session_state.guests:
+                                st.warning(f"Guest '{name}' in table {table_letter} is not in the guest list")
+                            hosts.append(name)
+                    
+                    special_tables[table_letter] = {
+                        "hosts": hosts,
+                        "table_id": next(t for t, l in st.session_state.table_letters.items() if l == table_letter)
+                    }
+            except Exception as e:
+                st.error(f"Error parsing line: {line} - {str(e)}")
+                      
+        
+        st.session_state[str(Settings.SPECIAL_TABLES)+_FROM_INPUT] = special_tables
+
+        
+
+
 def set_groups():
     with st.sidebar.expander("Groups"):
         st.markdown("""
@@ -480,6 +531,8 @@ def set_tables():
             )
                 
         TABLES, TABLE_LETTERS = parse_table_definitions(st.session_state[str(Settings.TABLE_DEFINITIONS)])
+        st.session_state.tables = TABLES
+        st.session_state.table_letters = TABLE_LETTERS
         
         with col2:
             for table_id in sorted(TABLES.keys()):
@@ -705,6 +758,7 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
     EXCLUDED_NEIGHBOR_WEIGHT = weights.get(str(Weights.EXCLUDED_NEIGHBOR), 50)   # Weight for excluded neighbors
     REPEAT_NEIGHBOR_WEIGHT = weights.get(str(Weights.REPEAT_NEIGHBOR), 10)     # Weight for repeat neighbors across rounds
     CORNER_PENALTY_WEIGHT = weights.get(str(Weights.CORNER), 10)  # Weight for corner position penalty
+    SPECIAL_TABLE_WEIGHT = weights.get(str(Weights.SPECIAL_TABLE), 100)  # Weight for special table penalty
 
     # st.write(f"GENDER_ALTERNATION_WEIGHT: {GENDER_ALTERNATION_WEIGHT}")
     # st.write(f"PREFERRED_NEIGHBOR_WEIGHT: {PREFERRED_NEIGHBOR_WEIGHT}")
@@ -751,7 +805,8 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
         "Preferred Neighbors": [],
         "Excluded Neighbors": [],
         "Repeat Neighbors": [],
-        "Corner Positions": []
+        "Corner Positions": [],
+        "Special Tables": []
     }
     
     # Define the scoring function for all arrangements
@@ -767,9 +822,13 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
         excluded_score = 0
         repeat_score = 0
         corner_score = 0
-        
+        special_table_score = 0
         # Track costs per guest if requested
         guest_costs = defaultdict(lambda: defaultdict(int)) if track_guest_costs else None
+        
+        special_tables = st.session_state.get(str(Settings.SPECIAL_TABLES)+_FROM_INPUT, {})
+        special_table_guests = defaultdict(lambda: defaultdict(int))
+    
         
         # Track all neighbor pairs across all rounds
         all_neighbor_pairs = set()
@@ -777,10 +836,18 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
         # Track who sits in corner positions in each round
         corner_positions_by_person = defaultdict(list)
         
+        # Find guests on special tables
+        for round_idx, arrangement in enumerate(arrangements_to_score):
+            for seat, person in arrangement.items():
+                table_id = seat[0]
+                table_letter = table_letters[table_id]
+                
+                if table_letter in special_tables:
+                    special_table_guests[table_letter][person] += 1 
+        
         # Score each arrangement individually
         for round_idx, arrangement in enumerate(arrangements_to_score):
-            round_score = 0
-            
+            round_score = 0 
             # Identify corner positions for this round
             corner_positions = []
             for table_id, seats_per_side in tables.items():
@@ -951,6 +1018,20 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     corner_score += corner_penalty
                 if track_guest_costs:
                     guest_costs[person]["corner"] += corner_penalty
+                    
+        # Penalize repeat guests on special tables
+        for table_letter, guest_counts in special_table_guests.items():
+            table_info = special_tables[table_letter]
+            for person, count in guest_counts.items():
+                # If person is not a host and sits at the table multiple times
+                if person not in table_info["hosts"] and count > 1:
+                    penalty = -SPECIAL_TABLE_WEIGHT * (count - 1)**2
+                    total_score += penalty
+                    if collect_components:
+                        special_table_score += penalty
+                    if track_guest_costs:
+                        guest_costs[person]["special"] = penalty
+        
         
         if track_guest_costs:
             # Calculate total cost per guest
@@ -963,7 +1044,8 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                     "Preferred Neighbors": preferred_score,
                     "Excluded Neighbors": excluded_score,
                     "Repeat Neighbors": repeat_score,
-                    "Corner Positions": corner_score
+                    "Corner Positions": corner_score,
+                    "Special Tables": special_table_score
                 }, guest_costs
             return total_score, guest_costs
         
@@ -973,7 +1055,8 @@ def optimize_all_arrangements(arrangements, seats, tables, table_letters, seat_n
                 "Preferred Neighbors": preferred_score,
                 "Excluded Neighbors": excluded_score,
                 "Repeat Neighbors": repeat_score,
-                "Corner Positions": corner_score
+                "Corner Positions": corner_score,
+                "Special Tables": special_table_score
             }
         return total_score
     
@@ -1394,8 +1477,9 @@ def display_problematic_guests(guest_costs):
     
     df = pd.DataFrame(rows)
     
+    
     # Ensure all cost columns exist
-    for col in ['gender', 'preferred', 'excluded', 'repeat', 'corner', 'total']:
+    for col in ['gender', 'preferred', 'excluded', 'repeat', 'corner', 'special', 'total']:
         if col not in df.columns:
             df[col] = 0
     
@@ -1408,7 +1492,7 @@ def display_problematic_guests(guest_costs):
     # Show the top 5 most problematic guests
     if len(df) > 0:
         worst_guests = df.sort_values('total').head(5)
-        st.write("### Top 5 Most Problematic Guests")
+        st.write("### Top 5 Worst Scored Guests")
         
         # Create a bar chart of the worst guests
         st.bar_chart(worst_guests.set_index('Guest')['total'])
@@ -1534,18 +1618,21 @@ def set_weights():
             str(Weights.EXCLUDED_NEIGHBOR): 50.0,
             str(Weights.GENDER_ALTERNATION): 150.0,
             str(Weights.REPEAT_NEIGHBOR): 15.0,
-            str(Weights.CORNER): 10.0
+            str(Weights.CORNER): 10.0,
+            str(Weights.SPECIAL_TABLE): 100.0
         }
         
         # Create sliders for each weight
         updated_weights = {}
+        
+        MAX_VALUE = 1000
         
         # Use the correct keys from the settings file
         preferred_value = int(weights_dict.get(str(Weights.PREFERRED_NEIGHBOR), 20))
         updated_weights[str(Weights.PREFERRED_NEIGHBOR)] = st.slider(
             "Preferred Neighbor", 
             min_value=0, 
-            max_value=200, 
+            max_value=MAX_VALUE, 
             value=preferred_value,
             step=1,
             help="Higher values give more importance to seating people next to their preferred neighbors."
@@ -1555,7 +1642,7 @@ def set_weights():
         updated_weights[str(Weights.EXCLUDED_NEIGHBOR)] = st.slider(
             "Excluded Neighbors", 
             min_value=0, 
-            max_value=200, 
+            max_value=MAX_VALUE, 
             value=excluded_value,
             step=1,
             help="Higher values give more importance to avoiding seating people next to their excluded neighbors."
@@ -1565,7 +1652,7 @@ def set_weights():
         updated_weights[str(Weights.GENDER_ALTERNATION)] = st.slider(
             "Gender Alternation", 
             min_value=0, 
-            max_value=200, 
+            max_value=MAX_VALUE, 
             value=gender_value,
             step=1,
             help="Higher values give more importance to alternating genders at the table."
@@ -1575,7 +1662,7 @@ def set_weights():
         updated_weights[str(Weights.REPEAT_NEIGHBOR)] = st.slider(
             "Repeated Neighbor", 
             min_value=0, 
-            max_value=200, 
+            max_value=MAX_VALUE, 
             value=repeat_value,
             step=1,
             help="Higher values give more importance to avoiding repeat neighbors across different rounds."
@@ -1585,10 +1672,20 @@ def set_weights():
         updated_weights[str(Weights.CORNER)] = st.slider(
             "Repeated corner position", 
             min_value=0, 
-            max_value=200, 
+            max_value=MAX_VALUE, 
             value=corner_value,
             step=1,
             help="Higher values give more importance to avoiding the same person sitting in corner positions repeatedly."
+        )
+        
+        special_table_value = int(weights_dict.get(Weights.SPECIAL_TABLE, 100))
+        updated_weights[str(Weights.SPECIAL_TABLE)] = st.slider(
+            "Special Table", 
+            min_value=0, 
+            max_value=MAX_VALUE, 
+            value=special_table_value,
+            step=1,
+            help="Higher values give more importance to avoiding repeat guests on special tables."
         )
         
         # Store the updated weights in session state
@@ -1841,6 +1938,7 @@ def main():
     set_fixed_assignments()
     set_same_gender_ok()
     set_groups()
+    set_special_tables()
     set_weights()
 
     

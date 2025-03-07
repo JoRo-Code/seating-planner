@@ -1,18 +1,19 @@
-
-  {
-    "table_definitions": "A: 5\nB: 5\nC: 5\nD: 5\nE: 5\nF: 5",
-    "males": "Bengt\nDavid\nDaniel L\nErik\nDaniel T\nJoel\nJohan R\nLars\nEmil\nOla\nOlle\nOscar\nPer I\nPeter\nS\u00f6ren\nJohan D\nUrban\nThomas\nJan\nPer S\nNiclas\nJakob\nMats\nJonas\nAnders\nH\u00e5kan\nChristian\nStefan\nCalle",
-    "females": "Anna Ho\nAnna Ha\nChristine\nCatharina\nCecilia\nEmelie\nHanna\nHelena N\nHelena R\nLiliana\nLotta\nLudmilla\nMonica\nSarah\nSophie\nTilde\nUlrika\nEliza\nCharlotte\nHelena E\nMargot\nInger\nAnnika\nMaria\nSara\nChristina B\nChristina P\n\u00c5sa\nElin\nKlara\nLea",
-    "fixed_assignments": "1:B8:Johan R\n1:B7: Liliana\n1:B9:Margot\n2:B8:Johan R\n3:B8:Johan R\n1:E5:Lea\n1:E9:Sophie\n1:E10:Eliza\n1:A1:Ulrika\n1:A6: S\u00f6ren\n2:A1:Ulrika\n2:A6: S\u00f6ren\n3:A1:Ulrika\n3:A6: S\u00f6ren",
-    "preferred_neighbors": "Thomas: Ulrika, Lotta, Helena N\nInger: Lars, Jakob, \nSarah: Anders, Johan D, H\u00e5kan, Mats, \nSara: Johan D, H\u00e5kan, Mats, S\u00f6ren, Lars\nLiliana: Johan R, Joel, Mats, S\u00f6ren\nJohan R: Liliana, Christina B, Margot, Catharina, Annika\nChristina B: Jan, Mats, Daniel T\nMargot: Bengt, Per I, Johan R, Lars, Olle\nBengt: Margot, Helena E, Charlotte\nAnna Ha: Thomas, Emil,  Lars\nLudmilla: David, Daniel L, Jakob, Urban, Johan D, Jan\nEliza: Jonas, Oscar, Lea, Sophie, Elin, Klara\nJohan D: Ulrika, Christine, Sara, Sarah, Ludmilla\nCatharina: Mats, Stefan, Johan R, Emil\nOscar: Eliza, Klara, Elin, Lea\nUlrika: Mats, Johan D, Lars, H\u00e5kan, Anders\nSophie: Eliza, Lea\nLea: Eliza, Sophie\nChristina P: Thomas, Per S\nChristina B: Daniel T, Mats\nCharlotte: Christian, Jan, Peter\nMats: Ulrika, Maria, Emelie, Sara, Sarah, Anna Ho\nDavid: Ludmilla, Annika, Anna Ho, Sarah, Ulrika, Helena N\nJan: Christina B, Eliza\nCalle: Elin, Klara, Tilde, Eliza, Sophie\nAnders: Sarah, \u00c5sa\nPer S: \u00c5sa, Helena N\nCecilia: Per I, Jan\n\u00c5sa: Lars, Anders, Per S, Per I\nEmelie: Mats, Joel, Calle\nHelena R: Jonas, H\u00e5kan, Anders\nMonica: Lars, Ola, Jan, Thomas\nLars: Monica, Sara, Ulrika, \nHelena N: Thomas\nMaria: Peter",
-    "excluded_neighbors": "Daniel T: Emelie, Ludmilla, Cecilia\nMargot: Jan\n\nCharlotte: Thomas\nLotta: Emil, Peter, Bengt\nBengt: Cecilia, Lotta, Emelie, Ludmilla, Helena N\nMonica: Daniel L\nStefan: Maria\n\u00c5sa: Jonas\n\nOla: Helena N\nAnna Ho: Erik\nAnna Ha: Joel\nPer I: Helena E\nAnnika: Jakob\nLiliana: David\n\nTilde: Oscar\n\nChristina P: Christian\nHanna: Per S\n\nUrban: Catharina\nAnders: Sara\n\nJohan R: Ludmilla, Sophie, Elin, Klara, Eliza, Emelie, Lea, Tilde\nNiclas: Inger\n\nInger: Niclas\n\nOlle: Helena R\nErik: Elin, Klara\nJohan D: Helena E\nEmelie: Oscar, Peter\nLars: Helena R, Ludmilla, Emelie\nDavid: Margot, Inger, \u00c5sa, Lea, Eliza, Sophie, Elin, Klara",
-    "same_gender_ok": "Lea, Eliza, Sophie",
-    "repeat_ok_groups": "Lea, Eliza, Sophie",
-    "weights": {
-      "preferred_neighbor": 20,
-      "excluded_neighbor": 50,
-      "gender_alternation": 150,
-      "repeat_neighbor": 150,
-      "corner": 100
-    }
-  }
+{
+  "table_definitions": "A: 10\nB: 10\nC: 10",
+  "males": "Bengt\nDavid\nDaniel L\nErik\nDaniel T\nJoel\nJohan R\nLars\nEmil\nOla\nOlle\nOscar\nPer I\nPeter\nS\u00f6ren\nJohan D\nUrban\nThomas\nJan\nPer S\nNiclas\nJakob\nMats\nJonas\nAnders\nH\u00e5kan\nChristian\nStefan\nCalle",
+  "females": "Anna Ho\nAnna Ha\nChristine\nCatharina\nCecilia\nEmelie\nHanna\nHelena N\nHelena R\nLiliana\nLotta\nLudmilla\nMonica\nSarah\nSophie\nTilde\nUlrika\nEliza\nCharlotte\nHelena E\nMargot\nInger\nAnnika\nMaria\nSara\nChristina B\nChristina P\n\u00c5sa\nElin\nKlara\nLea",
+  "fixed_assignments": "\n1:A3: Sarah\n1:A4: Mats\n1:A5:Liliana\n1:A6: Johan R\n1:A7: Margot\n1:A8: Bengt\n1:A9: Hanna\n1:A10:S\u00f6ren\n1:A14:Cecilia\n1:A15:Jan\n1:A16:Ludmilla\n1:A17:David\n1:A20:Ulrika\n\n1:B8:Erik\n1:B9:Lea\n1:B10:Eliza\n1:B20:Sophie\n\n1:C9:Elin\n1:C10:Oscar\n1:C18:Tilde\n1:C19:Calle\n1:C20:Klara\n\n2:A6:Johan R\n3:A6:Johan R\n\n2:B18:Joel\n2:B19:Emelie\n2:B20:Mats\n\n2:C8:Emil\n2:C9:Eliza\n2:C10:Sophie\n2:C20:Lea",
+  "preferred_neighbors": "Thomas: Ulrika, Lotta, Helena N\nInger: Lars, Jakob, \nSarah: Anders, Johan D, H\u00e5kan, Mats, \nSara: Johan D, H\u00e5kan, Mats, S\u00f6ren, Lars\nLiliana: Joel, Mats, S\u00f6ren\nJohan R: Christina B, Margot, Catharina, Annika\nChristina B: Jan, Mats, Daniel T\nMargot: Bengt, Per I, Johan R, Lars, Olle\nBengt: Margot, Helena E, Charlotte\nAnna Ha: Thomas, Emil,  Lars\nLudmilla: Daniel L, Jakob, Urban, Johan D,\nJohan D: Ulrika, Christine, Sara, Sarah, Ludmilla\nCatharina: Mats, Stefan, Johan R, Emil\nUlrika: Mats, Johan D, Lars, H\u00e5kan, Anders\nChristina P: Thomas, Per S\nCharlotte: Christian, Jan, Peter\nMats: Ulrika, Maria, Emelie, Sara, Sarah, Anna Ho\nDavid: Ludmilla, Annika, Anna Ho, Sarah, Ulrika, Helena N\nJan: Christina B, Eliza\nCalle: Elin, Klara, Tilde, Eliza, Sophie\nAnders: Sarah, \u00c5sa\nPer S: \u00c5sa, Helena N\nCecilia: Per I, Jan\n\u00c5sa: Lars, Anders, Per S, Per I\nEmelie: Mats, Joel, Calle\nHelena R: Jonas, H\u00e5kan, Anders\nMonica: Lars, Ola, Jan, Thomas\nLars: Monica, Sara, Ulrika, \nHelena N: Thomas\nMaria: Peter",
+  "excluded_neighbors": "Daniel T: Emelie, Ludmilla, Cecilia\nMargot: Jan\n\nCharlotte: Thomas\nLotta: Emil, Peter, Bengt\nBengt: Cecilia, Lotta, Emelie, Ludmilla, Helena N\nMonica: Daniel L\nStefan: Maria\n\u00c5sa: Jonas\n\nOla: Helena N\nAnna Ho: Erik\nAnna Ha: Joel\nPer I: Helena E\nAnnika: Jakob\nLiliana: David\n\nTilde: Oscar\n\nChristina P: Christian\nHanna: Per S\n\nUrban: Catharina\nAnders: Sara\n\nJohan R: Ludmilla, Sophie, Elin, Klara, Eliza, Emelie, Lea, Tilde\nNiclas: Inger\n\nInger: Niclas\n\nOlle: Helena R\nErik: Elin, Klara\nJohan D: Helena E\nEmelie: Oscar, Peter\nLars: Helena R, Ludmilla, Emelie\nDavid: Margot, Inger, \u00c5sa, Lea, Eliza, Sophie, Elin, Klara",
+  "same_gender_ok": "Lea, Eliza, Sophie",
+  "repeat_ok_groups": "Lea, Eliza, Sophie",
+  "weights": {
+    "preferred_neighbor": 20,
+    "excluded_neighbor": 50,
+    "gender_alternation": 150,
+    "repeat_neighbor": 150,
+    "corner": 10,
+    "special_table": 500
+  },
+  "special_tables": "A: Johan R\nB: S\u00f6ren, Ulrika"
+}
